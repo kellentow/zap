@@ -1,0 +1,13 @@
+/*!
+ * I am not responsible for anything said in this app.
+ * Press enter to send a message
+ * 
+ * Author: Kellen
+ * Built: 2025-08-03T10:58:54.793Z
+ * Build ID: irnmck4w3l
+ * This code uses the MPL-2.0 license.
+ * You can find the license here: https://www.mozilla.org/en-US/MPL/2.0/
+ * 
+ * This code was generated and packed by Webpack.
+ * You can find the source code at https://github.com/kellentow/zap
+ */

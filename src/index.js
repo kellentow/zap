@@ -1,83 +1,185 @@
-var global = {
-    messages: {}
+import htmlContent from './body.html';
+import cssContent from './body.css';
+
+const global = {
+    messages: {},
+    room: "1",
+    servers: [], // {id, nickname, img}
+    account: {name: "You", id: Math.random()*65565} // Default account
 }
 
-delay(function () { }, 0)
+let lastRenderedIndex = 0; // Track last rendered message index
 
-console.log("a")
-var canvas = document.getElementById("canvas");
-console.log(canvas)
+function lbsend(a, b, c, d) {
+    send(a, b, c, d);
+    get(a, b, c, d);
+}
 
-var div = document.getElementById("chat_div");
+function save(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+}
+
+function load(key, Default) {
+    // sourcery skip: dont-reassign-parameters
+    Default = Default || null;
+    const value = localStorage.getItem(key);
+    if (value) {
+        try {
+            return JSON.parse(value);
+        } catch (e) {
+            console.error(`Error parsing JSON for key ${key}:`, e);
+            return Default;
+        }
+    }
+    return Default;
+}
+
+function promptForAccount() {
+    let name = null;
+    while (!name || name.trim().length === 0) {
+        name = prompt("Enter your name to continue:");
+        if (name === null) {
+            alert("You must enter a name to use the chat.");
+        }
+    }
+    global.account = {
+        name: name.trim(),
+        id: Math.floor(Math.random() * 65565)
+    };
+    save("account", global.account);
+}
+
+global.messages = load("messages",{});
+global.servers = load("servers",[{id: "1", nickname: "General", img: ""}]);
+global.account = load("account",{});
+if (!global.account.name) {
+    promptForAccount();
+}
+
+let div = document.getElementById("chat_div");
 if (!div) {
-    div = document.createElement("div");
-    div.style.cssText = "background: none; height: 966px; width: 725px; left: 0px; top: 0px; z-index: 0;"
-    div.style.width = canvas.width + "px";
-    div.style.height = canvas.height + "px";
-    div.id = "chat_div";
-    canvas.parentElement.appendChild(div);
+    for (let i = 0; i < document.body.children.length; i++) {
+        document.body.children[i].style.display = "none";
+    }
+    document.body.insertAdjacentHTML('beforeend', htmlContent)
+    const style = document.createElement('style');
+    style.textContent = cssContent;
+    document.head.appendChild(style);
+} else {
+    console.warn("Chat div already exists, reloading page to avoid conflicts.");
+    location.reload(); // Reload if div already exists
 }
-console.log(div)
-canvas.style.display = "none"
+div = document.getElementById("chat_div");
 
 function get(timestamp, account, message, room) {
     if (!global.messages[room]) {
         global.messages[room] = [];
     }
+    let parsed_message, parsed_account;
     try {
-        message = JSON.parse(message);
+        parsed_message = JSON.parse(message);
     } catch (e) {
         console.error("Invalid JSON msg:", e.message);
         return;
     }
     try {
-        account = JSON.parse(account);
+        parsed_account = JSON.parse(account);
     } catch (e) {
         console.error("Invalid JSON acc:", e.message);
         return;
     }
+    if (!parsed_account || !parsed_message) {
+        console.error("Parsed account or message is null",account, message);
+        return;
+    }
+    console.log(`Received message in room ${room}:`, { timestamp, parsed_account, parsed_message });
     global.messages[room].push({
         timestamp: timestamp,
-        account: account,
-        message: message
+        account: parsed_account,
+        message: parsed_message
     });
+    save("messages", global.messages);
 }
 
-main_div = document.createElement("div");
-main_div.style.position = "relative";
-main_div.style.top = "0px";
-main_div.style.left = "0px";
-main_div.style.width = "90%";
-main_div.style.height = "100%";
-main_div.style.overflowY = "scroll";
-main_div.style.backgroundColor = "white";
-div.appendChild(main_div);
+const msg_input = document.getElementById("msg_input");
+const msg_send = document.getElementById("msg_send");
+const chat_div = document.getElementById("chat_inner_div");
+const servers_div = document.getElementById("servers_div");
+const server_adder = document.getElementById("serveradd");
+const info_floater = document.getElementById("info_floater");
 
-msg_input_div = document.createElement("div");
-msg_input_div.style.position = "relative";
-msg_input_div.style.bottom = "0px";
-msg_input_div.style.right = "0px";
-msg_input_div.style.width = "90%";
-main_div.appendChild(msg_input_div);
+info_floater.innerHTML = `
+    <strong>Build ID:</strong> ${process.env.BUILD_ID}<br>
+    <strong>Build Date:</strong> ${process.env.BUILD_DATE}<br>
+    <strong>Version:</strong> ${process.env.VERSION}<br>`
 
-msg_input = document.createElement("input")
-msg_input.type = "text"
-msg_input.placeholder = "Type a message"
-msg_input.style.width = "90%";
-msg_input_div.appendChild(msg_input);
-
-msg_send = document.createElement("button")
-msg_send.value = "Send"
-msg_send.innerText = "Send"
-msg_send.style.width = "10%";
 msg_send.onclick = function () {
-    var msg = msg_input.value;
+    let msg = msg_input.value;
     if (msg) {
-        get(Date.now(), JSON.stringify({ name: "You" }), JSON.stringify({ text: msg }), "test_room");
         msg_input.value = "";
-        send(Date.now(), JSON.stringify({ name: "You" }), JSON.stringify({ text: msg }), "test_room")
+        lbsend(Date.now(), JSON.stringify(global.account), JSON.stringify({ text: msg }), global.room)
     }
 }
-msg_input_div.appendChild(msg_send);
 
+server_adder.onclick = function () {
+    let server_name, server_id, server_img;
+    while (!server_name) {
+        server_name = prompt("Enter server name:");
+    }
+    while (!server_id) {
+        server_id = prompt("Enter server ID:");
+    }
+    server_img = prompt("Enter server image URL (optional):", "");
+    global.servers.push({ id: server_id, nickname: server_name, img: server_img });
+    save("servers", global.servers);
+}
 
+function change_room_binder(room) {
+    return function () {
+        global.room = room;
+        console.log("Changed room to:", room);
+        // Optionally, clear the messages for the new room
+        global.messages[room] = global.messages[room] || [];
+    }
+}
+
+function onTick() {
+    if (!div) {
+        console.warn("Main div not found, reloading page to avoid conflicts.");
+        location.reload(); // Reload if div is not found
+        return;
+    }
+    const messages = global.messages[global.room] || [];
+    for (let i = lastRenderedIndex; i < messages.length; i++) {
+        let msg = messages[i];
+        let msg_div = document.createElement("div");
+        msg_div.className = "msg";
+        msg_div.id = "msg_" + i;
+        msg_div.innerHTML = `<strong>${msg.account.name}</strong> 
+            <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span><br>
+            ${msg.message.text}`;
+        chat_div.appendChild(msg_div);
+    }
+    lastRenderedIndex = messages.length;
+    
+    global.servers.forEach(function (server, i) {
+        let server_div = document.getElementById("server_" + i);
+        let server_html = `${server.img ? `<img src="${server.img}" alt="${server.nickname}">` : ""} ${server.nickname}`;
+        if (!server_div) {
+            server_div = document.createElement("div");
+            server_div.className = "server";
+            server_div.id = "server_" + i;
+            server_div.className = "server";
+            server_div.innerHTML = server_html;
+            server_div.onclick = change_room_binder(server.id);
+            servers_div.insertBefore(server_div, servers_div.lastChild);
+        } else {
+            server_div.innerHTML = server_html;
+            server_div.onclick = change_room_binder(server.id);
+        }
+    });
+
+    requestAnimationFrame(onTick);
+}
+
+requestAnimationFrame(onTick); // Start the animation frame loop

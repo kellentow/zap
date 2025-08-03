@@ -4,5 +4,11 @@
   },
   "scripts": {
     "build": "webpack"
-  }
+  },
+  "name": "zapmessenger",
+  "version": "1.0.0",
+  "description": "A simple messenger app",
+  "main": "index.js",
+  "author": "Kellen",
+  "license": "MPL-2.0"
 }
