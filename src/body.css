@@ -20,6 +20,13 @@
     color: rgba(105, 105, 105, 0.75);
     font-family: Arial, sans-serif;
 }
+.server img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 9999px;
+    object-fit: cover;
+    object-position: center;
+}
 .server {
     width: 100%;
     aspect-ratio: 1 / 1;
