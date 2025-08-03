@@ -108,10 +108,8 @@ const servers_div = document.getElementById("servers_div");
 const server_adder = document.getElementById("serveradd");
 const info_floater = document.getElementById("info_floater");
 
-info_floater.innerHTML = `
-    <strong>Build ID:</strong> ${process.env.BUILD_ID}<br>
-    <strong>Build Date:</strong> ${process.env.BUILD_DATE}<br>
-    <strong>Version:</strong> ${process.env.VERSION}<br>`
+info_floater.innerHTML = `<strong>v${process.env.VERSION}</strong><br>
+    <strong>Build:</strong> ${process.env.BUILD_ID}<br>`
 
 msg_send.onclick = function () {
     let msg = msg_input.value;

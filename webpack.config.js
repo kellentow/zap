@@ -3,7 +3,7 @@ const webpack = require('webpack');
 const path = require('path');
 const { version } = require('./package.json');
 
-const build_id = Math.random().toString(36).substring(2, 15);
+const build_id = Math.random().toString(36).substring(2, 13);
 const build_date = new Date().toISOString().split('T')[0];;
 
 module.exports = {
