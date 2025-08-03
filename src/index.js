@@ -5,7 +5,7 @@ const global = {
     messages: {},
     room: "1",
     servers: [], // {id, nickname, img}
-    account: {name: "You", id: Math.random()*65565} // Default account
+    account: { name: "You", id: Math.random() * 65565 } // Default account
 }
 
 let lastRenderedIndex = 0; // Track last rendered message index
@@ -49,9 +49,9 @@ function promptForAccount() {
     save("account", global.account);
 }
 
-global.messages = load("messages",{});
-global.servers = load("servers",[{id: "1", nickname: "General", img: ""}]);
-global.account = load("account",{});
+global.messages = load("messages", {});
+global.servers = load("servers", [{ id: "1", nickname: "General", img: "" }]);
+global.account = load("account", {});
 if (!global.account.name) {
     promptForAccount();
 }
@@ -89,7 +89,7 @@ function get(timestamp, account, message, room) {
         return;
     }
     if (!parsed_account || !parsed_message) {
-        console.error("Parsed account or message is null",account, message);
+        console.error("Parsed account or message is null", account, message);
         return;
     }
     console.log(`Received message in room ${room}:`, { timestamp, parsed_account, parsed_message });
@@ -132,12 +132,30 @@ server_adder.onclick = function () {
     save("servers", global.servers);
 }
 
-function change_room_binder(room) {
+function change_room_binder(room, element) {
     return function () {
+        lastRenderedIndex = 0; // Reset last rendered index when changing room
+        for (let i = chat_div.children.length - 1; i >= 0; i--) {
+            const element = chat_div.children[i];
+            if (element.id.startsWith("msg_")) {
+                element.remove();
+            }
+        }
+
         global.room = room;
         console.log("Changed room to:", room);
         // Optionally, clear the messages for the new room
         global.messages[room] = global.messages[room] || [];
+
+        global.servers.forEach(function (server) {
+            let server_div = document.getElementById("server_" + server.id);
+            if (server_div) {
+                server_div.classList.remove("selected");
+            }
+        });
+        if (element) {
+            element.classList.add("selected");
+        }
     }
 }
 
@@ -159,25 +177,54 @@ function onTick() {
         chat_div.appendChild(msg_div);
     }
     lastRenderedIndex = messages.length;
-    
+
     global.servers.forEach(function (server, i) {
-        let server_div = document.getElementById("server_" + i);
+        let server_div = document.getElementById("server_" + server.id);
         let server_html = `${server.img ? `<img src="${server.img}" alt="${server.nickname}">` : ""} ${server.nickname}`;
         if (!server_div) {
             server_div = document.createElement("div");
             server_div.className = "server";
-            server_div.id = "server_" + i;
+            server_div.id = "server_" + server.id;
             server_div.className = "server";
             server_div.innerHTML = server_html;
-            server_div.onclick = change_room_binder(server.id);
+            server_div.onclick = change_room_binder(server.id, server_div);
             servers_div.insertBefore(server_div, servers_div.lastChild);
         } else {
             server_div.innerHTML = server_html;
-            server_div.onclick = change_room_binder(server.id);
+            server_div.onclick = change_room_binder(server.id, server_div);
         }
     });
 
     requestAnimationFrame(onTick);
 }
+
+div.addEventListener("contextmenu", function (event) {
+    const serverEl = event.target.closest('[id^="server_"]'); // safer than direct id access
+    if (serverEl && event.button === 2) {
+        event.preventDefault();
+        const serverId = serverEl.id.replace("server_", "");
+        const index = global.servers.findIndex(s => s.id === serverId);
+        if (index !== -1) {
+            const removed = global.servers.splice(index, 1)[0];
+            save("servers", global.servers);
+
+            document.getElementById("servers_div").removeChild(serverEl);
+            console.log(`Server ${removed.nickname} removed.`);
+            if (global.room === serverId) {
+                global.room = global.servers.length > 0 ? global.servers[0].id : "1";
+                lastRenderedIndex = 0;
+                chat_div.innerHTML = "";
+            }
+
+            document.querySelectorAll('.server').forEach(el => el.classList.remove('selected'));
+            const newSelected = document.getElementById("server_" + global.room);
+            if (newSelected) {
+                newSelected.classList.add('selected');
+            }
+        }
+
+        return;
+    }
+});
 
 requestAnimationFrame(onTick); // Start the animation frame loop
