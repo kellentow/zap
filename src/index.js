@@ -104,6 +104,7 @@ function get(timestamp, account, message, room) {
 const msg_input = document.getElementById("msg_input");
 const msg_send = document.getElementById("msg_send");
 const chat_div = document.getElementById("chat_inner_div");
+const msg_container = document.getElementById("msg_container")
 const servers_div = document.getElementById("servers_div");
 const server_adder = document.getElementById("serveradd");
 const info_floater = document.getElementById("info_floater");
@@ -135,12 +136,7 @@ server_adder.onclick = function () {
 function change_room_binder(room, element) {
     return function () {
         lastRenderedIndex = 0; // Reset last rendered index when changing room
-        for (let i = chat_div.children.length - 1; i >= 0; i--) {
-            const element = chat_div.children[i];
-            if (element.id.startsWith("msg_")) {
-                element.remove();
-            }
-        }
+        msg_container.innerHTML = ""
 
         global.room = room;
         console.log("Changed room to:", room);
@@ -173,10 +169,13 @@ function onTick() {
         msg_div.id = "msg_" + i;
         msg_div.innerHTML = `<strong>${msg.account.name}</strong> 
             <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span><br>
-            ${msg.message.text}`;
-        chat_div.appendChild(msg_div);
+            <pre>${msg.message.text}</pre>`;
+        msg_container.appendChild(msg_div);
+        lastRenderedIndex = messages.length;
+        if ((msg_container.scrollHeight - msg_container.scrollTop - msg_container.clientHeight) <= 200) {
+            msg_container.scrollTop = msg_container.scrollHeight
+        }
     }
-    lastRenderedIndex = messages.length;
 
     global.servers.forEach(function (server, i) {
         let server_div = document.getElementById("server_" + server.id);
@@ -226,5 +225,7 @@ div.addEventListener("contextmenu", function (event) {
         return;
     }
 });
+
+window.get = get // env requires window.get
 
 requestAnimationFrame(onTick); // Start the animation frame loop
