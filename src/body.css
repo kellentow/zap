@@ -10,6 +10,7 @@
     background-color: #4f4f4f;
     overflow-y: scroll;
 }
+
 #info_floater {
     position: absolute;
     bottom: 0px;
@@ -20,6 +21,7 @@
     color: rgba(105, 105, 105, 0.75);
     font-family: Arial, sans-serif;
 }
+
 .server img {
     width: 100%;
     aspect-ratio: 1 / 1;
@@ -27,6 +29,7 @@
     object-fit: cover;
     object-position: center;
 }
+
 .server {
     width: 100%;
     aspect-ratio: 1 / 1;
@@ -42,6 +45,11 @@
     justify-content: center;
     cursor: pointer;
 }
+
+.server.selected {
+    outline: 2px solid limegreen;
+}
+
 #chat_inner_div {
     position: absolute;
     top: 0px;
@@ -54,6 +62,7 @@
     align-items: left;
     flex-direction: column;
 }
+
 .msg {
     width: 100%;
     padding: 10px;
@@ -65,7 +74,8 @@
     font-family: Arial, sans-serif;
     color: #333;
 }
-#msg_input_div {
+
+#message_input_div {
     position: absolute;
     bottom: 0px;
     right: 0px;
@@ -76,12 +86,14 @@
     align-items: center;
     flex-direction: row;
 }
+
 #msg_input {
     margin-right: 10px;
     width: 100%;
     height: 100%;
     border-radius: 9999px;
 }
+
 #msg_send {
     margin-right: 10px;
     aspect-ratio: 1 / 1;
@@ -95,6 +107,7 @@
     background: none;
     cursor: pointer;
 }
+
 #msg_send_img {
     width: 100%;
     height: 100%;
@@ -102,6 +115,7 @@
     object-fit: cover;
     object-position: center;
 }
+
 #chat_div {
     position: absolute;
     top: 0px;
