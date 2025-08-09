@@ -1,11 +1,31 @@
 import htmlContent from './body.html';
 import cssContent from './body.css';
+import Quill from 'quill';
 
 const global = {
     messages: {},
     room: "1",
     servers: [], // {id, nickname, img}
-    account: { name: "You", id: Math.random() * 65565 } // Default account
+    account: { name: "You", id: Math.random() * 65565 }, // Default 
+    reTick: true
+}
+
+if (typeof send !== 'function') {
+    console.warn("send() not defined. Using mock send.");
+    window.send = function (...args) {
+        console.log("Mock send triggered with:", args);
+    };
+}
+
+if (Notification.permission === "default") {
+    Notification.requestPermission();
+}
+
+function sendNotification(title, message) {
+    // Only send if page is hidden and notifications are allowed
+    if (document.hidden && Notification.permission === "granted") {
+        new Notification(title, { body: message });
+    }
 }
 
 let lastRenderedIndex = 0; // Track last rendered message index
@@ -44,7 +64,7 @@ function promptForAccount() {
     }
     global.account = {
         name: name.trim(),
-        id: Math.floor(Math.random() * 65565)
+        id: crypto.randomUUID()
     };
     save("account", global.account);
 }
@@ -93,12 +113,14 @@ function get(timestamp, account, message, room) {
         return;
     }
     console.log(`Received message in room ${room}:`, { timestamp, parsed_account, parsed_message });
+    sendNotification("Zap Messenger:  " + parsed_account.name + " sent you a message!", parsed_message[0].data)
     global.messages[room].push({
         timestamp: timestamp,
         account: parsed_account,
-        message: parsed_message
+        content: parsed_message
     });
     save("messages", global.messages);
+    global.reTick = true
 }
 
 const msg_input = document.getElementById("msg_input");
@@ -109,14 +131,31 @@ const servers_div = document.getElementById("servers_div");
 const server_adder = document.getElementById("serveradd");
 const info_floater = document.getElementById("info_floater");
 
+const quill = new Quill(msg_input, {
+    theme: 'snow',
+    placeholder: 'Type a message...',
+    modules: {
+        toolbar: false  // Disable all formatting buttons
+    }
+});
+
 info_floater.innerHTML = `<strong>v${process.env.VERSION}</strong><br>
     <strong>Build:</strong> ${process.env.BUILD_ID}<br>`
 
 msg_send.onclick = function () {
-    let msg = msg_input.value;
-    if (msg) {
-        msg_input.value = "";
-        lbsend(Date.now(), JSON.stringify(global.account), JSON.stringify({ text: msg }), global.room)
+    const delta = quill.getContents();
+
+    const blocks = delta.ops.map(op => {
+        if (typeof op.insert === 'string') {
+            return { type: 'text', data: op.insert };
+        } else if (op.insert.image) {
+            return { type: 'image', data: op.insert.image };
+        }
+    });
+
+    if (blocks.some(b => b.data.trim?.())) {
+        quill.setContents([]); // clear editor
+        lbsend(Date.now(), JSON.stringify(global.account), JSON.stringify(blocks), global.room);
     }
 }
 
@@ -130,6 +169,7 @@ server_adder.onclick = function () {
     }
     server_img = prompt("Enter server image URL (optional):", "");
     global.servers.push({ id: server_id, nickname: server_name, img: server_img });
+    global.reTick = true
     save("servers", global.servers);
 }
 
@@ -152,10 +192,13 @@ function change_room_binder(room, element) {
         if (element) {
             element.classList.add("selected");
         }
+        global.reTick = true
     }
 }
 
 function onTick() {
+    if (!global.reTick) return;
+    global.reTick = false
     if (!div) {
         console.warn("Main div not found, reloading page to avoid conflicts.");
         location.reload(); // Reload if div is not found
@@ -164,16 +207,45 @@ function onTick() {
     const messages = global.messages[global.room] || [];
     for (let i = lastRenderedIndex; i < messages.length; i++) {
         let msg = messages[i];
-        let msg_div = document.createElement("div");
-        msg_div.className = "msg";
-        msg_div.id = "msg_" + i;
-        msg_div.innerHTML = `<strong>${msg.account.name}</strong> 
-            <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span><br>
-            <pre>${msg.message.text}</pre>`;
-        msg_container.appendChild(msg_div);
-        lastRenderedIndex = messages.length;
-        if ((msg_container.scrollHeight - msg_container.scrollTop - msg_container.clientHeight) <= 200) {
-            msg_container.scrollTop = msg_container.scrollHeight
+        console.log(msg)
+        try {
+            let msg_div = document.createElement("div");
+            msg_div.className = "msg";
+            msg_div.id = "msg_" + i;
+            msg_div.innerHTML = `<strong>${msg.account.name}</strong> 
+            <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span><br>`;
+            msg.content.forEach((data) => {
+                if (data.type === "text") {
+                    const pre = document.createElement("pre");
+                    pre.textContent = data.data;
+                    msg_div.appendChild(pre);
+                } else if (data.type === "image") {
+                    const img = document.createElement("img");
+                    try {
+                        img.src = data.data
+                        msg_div.appendChild(img);
+                    } catch (e) {
+                        console.warn("Invalid image URL:", data.data);
+                    }
+                } else if (data.type === "video") {
+                    const video = document.createElement("video");
+                    try {
+                        video.src = data.data;
+                        video.controls = true;
+                        msg_div.appendChild(video);
+                    } catch (e) {
+                        console.warn("Invalid video URL:", data.data);
+                    }
+                }
+            });
+
+            msg_container.appendChild(msg_div);
+            lastRenderedIndex = messages.length;
+            if ((msg_container.scrollHeight - msg_container.scrollTop - msg_container.clientHeight) <= 200) {
+                msg_container.scrollTop = msg_container.scrollHeight
+            }
+        } catch {
+            console.log("Failed to render message", msg)
         }
     }
 
@@ -184,7 +256,6 @@ function onTick() {
             server_div = document.createElement("div");
             server_div.className = "server";
             server_div.id = "server_" + server.id;
-            server_div.className = "server";
             server_div.innerHTML = server_html;
             server_div.onclick = change_room_binder(server.id, server_div);
             servers_div.insertBefore(server_div, servers_div.lastChild);
@@ -193,8 +264,6 @@ function onTick() {
             server_div.onclick = change_room_binder(server.id, server_div);
         }
     });
-
-    requestAnimationFrame(onTick);
 }
 
 div.addEventListener("contextmenu", function (event) {
@@ -228,4 +297,4 @@ div.addEventListener("contextmenu", function (event) {
 
 window.get = get // env requires window.get
 
-requestAnimationFrame(onTick); // Start the animation frame loop
+setInterval(onTick, 500) // Start the animation frame loop
