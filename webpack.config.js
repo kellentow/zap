@@ -12,6 +12,9 @@ module.exports = {
     filename: `bundle_${build_id}.js`,
     path: path.resolve(__dirname, 'dist'),
   },
+  externals: {
+    quill: 'Quill'
+  },
   module: {
     rules: [
       {
@@ -46,5 +49,5 @@ module.exports = {
       }
     }
   ],
-  mode: 'production', // or 'production'
+  mode: 'development', // 'development' or 'production'
 };
