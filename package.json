@@ -1,5 +1,6 @@
 {
   "devDependencies": {
+    "@types/quill": "^2.0.14",
     "esbuild": "^0.25.8"
   },
   "scripts": {
@@ -10,5 +11,8 @@
   "description": "A simple messenger app",
   "main": "index.js",
   "author": "Kellen",
-  "license": "MPL-2.0"
+  "license": "MPL-2.0",
+  "dependencies": {
+    "quill": "^2.0.3"
+  }
 }
