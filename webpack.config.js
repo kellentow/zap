@@ -21,7 +21,11 @@ module.exports = {
       {
         test: /\.css$/i,
         type: 'asset/source', // Treat CSS as a string
-      }
+      },
+      {
+        test: /service-worker\.js$/,
+        type: 'asset/source',
+      },
     ],
   },
   plugins: [

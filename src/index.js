@@ -1,5 +1,7 @@
 import htmlContent from './body.html';
 import cssContent from './body.css';
+import manifestData from './manifest.json';
+import swCode from './service-worker.js';
 import Quill from 'quill';
 
 const global = {
@@ -85,6 +87,28 @@ if (!div) {
     const style = document.createElement('style');
     style.textContent = cssContent;
     document.head.appendChild(style);
+    var blob = new Blob([swCode], { type: 'application/javascript' });
+    var blobUrl = URL.createObjectURL(blob);
+
+    // Register the service worker using the Blob URL
+    navigator.serviceWorker.register(blobUrl).then(registration => {
+        console.log('Service worker registered from blob:', registration);
+    });
+
+    const jsonString = JSON.stringify(manifestData);
+    blob = new Blob([jsonString], { type: 'application/json' });
+    blobUrl = URL.createObjectURL(blob);
+
+    let manifestLink = document.querySelector('link[rel="manifest"]');
+
+    if (!manifestLink) {
+        manifestLink = document.createElement('link');
+        manifestLink.rel = 'manifest';
+        document.head.appendChild(manifestLink);
+    }
+
+    manifestLink.href = manifestUrl;
+
 } else {
     console.warn("Chat div already exists, reloading page to avoid conflicts.");
     location.reload(); // Reload if div already exists
