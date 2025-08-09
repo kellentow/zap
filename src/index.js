@@ -1,6 +1,5 @@
 import htmlContent from './body.html';
 import cssContent from './body.css';
-import manifestData from './manifest.json';
 import swCode from './service-worker.js';
 import Quill from 'quill';
 
@@ -29,7 +28,7 @@ function sendNotification(title, message) {
         new Notification(title, { body: message });
     }
 }
-
+ 
 let lastRenderedIndex = 0; // Track last rendered message index
 
 function lbsend(a, b, c, d) {
@@ -107,7 +106,7 @@ if (!div) {
         document.head.appendChild(manifestLink);
     }
 
-    manifestLink.href = manifestUrl;
+    manifestLink.href = "/manifest.json";
 
 } else {
     console.warn("Chat div already exists, reloading page to avoid conflicts.");
