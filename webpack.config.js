@@ -12,21 +12,18 @@ module.exports = {
     filename: `bundle_${build_id}.js`,
     path: path.resolve(__dirname, 'dist'),
   },
-  externals: {
-    quill: 'Quill'
-  },
   module: {
     rules: [
       {
         test: /\.html$/i,
-        type: 'asset/source', // Treat HTML as a string
+        type: 'asset/source',
       },
       {
         test: /\.css$/i,
-        type: 'asset/source', // Treat CSS as a string
+        type: 'asset/source',
       },
       {
-        test: /service-worker\.js$/,
+        test: /\.str\.js$/,
         type: 'asset/source',
       },
     ],
