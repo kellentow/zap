@@ -1,7 +1,7 @@
 {
     "name": "Zap Messenger",
     "short_name": "Zap",
-    "start_url": ".",
+    "start_url": "https://bitsbox.com/run-app.html?8scdd",
     "display": "standalone",
     "background_color": "#1a1a1a",
     "theme_color": "#2575fc"

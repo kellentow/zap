@@ -50,6 +50,11 @@
     outline: 2px solid limegreen;
 }
 
+img {
+    max-width:60%;
+    max-width:60%;
+}
+
 #chat_inner_div {
     position: absolute;
     top: 0px;
@@ -67,13 +72,14 @@
     width:100;
     height:calc(100% - 50px);
     overflow-y: scroll;
+    padding-bottom: 150px;
 }
 
 .msg {
     width: 100%;
     padding: 10px;
     box-sizing: border-box;
-    border-radius: 9999px;
+    border-radius: 50px;
     background-color: #f1f1f1;
     margin: 5px 0;
     position: relative;
@@ -94,6 +100,7 @@
 }
 
 #msg_input {
+    border-color: black;
     margin-right: 10px;
     width: 100%;
     height: 100%;
