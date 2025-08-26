@@ -8,7 +8,7 @@ while getopts ":f" opt; do
     f)
       flag_f=true
       ;;
-    \?)
+    \?) 
       echo "Invalid option: -$OPTARG" >&2
       ;;
   esac

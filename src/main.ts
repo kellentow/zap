@@ -12,7 +12,7 @@ interface Account {
 interface Window {
     send: any;
     get: Function;
-    zap_global: { messages: Record<string, any>; room: string; servers: Server[]; account: Account; reTick: boolean; lastRenderedIndex: number; dark:boolean; online: {[key:string]: {account:Account,list:number[], last:number, avg:number}[]}; editor:any};
+    zap_global: { messages: Record<string, any>; room: string; servers: Server[]; account: Account; reTick: boolean; lastRenderedIndex: number; dark: boolean; online: { [key: string]: { account: Account, list: number[], last: number, avg: number }[] }; editor: any };
     toastui: any;
 }
 
@@ -37,7 +37,7 @@ if (typeof window.send !== 'function') {
     window.send = function (a: any, b: any, c: any, d: any) {
         console.log("Mock send triggered with:", [a, b, c, d]);
     };
-}  
+}
 
 var msg_send = document.getElementById("msg_send");
 var online_bar = document.getElementById("status_bar");
@@ -58,7 +58,7 @@ if (Notification.permission === "default") {
 }
 
 //#region Utils
-window.send.message = function (text:string) {
+window.send.message = function (text: string) {
     var time = Date.now();
     console.log(text);
     lbsend(0, JSON.stringify(window.zap_global.account), [time, text], window.zap_global.room);
@@ -66,10 +66,10 @@ window.send.message = function (text:string) {
 window.send.ping = function () {
     lbsend(1, JSON.stringify(window.zap_global.account), Date.now(), window.zap_global.room);
 };
-function save(key:string, value:any) {
+function save(key: string, value: any) {
     localStorage.setItem(key, JSON.stringify(value));
 }
-function load(key:string, Default:any) {
+function load(key: string, Default: any) {
     Default = Default || null;
     var value = localStorage.getItem(key);
     if (value) {
@@ -83,7 +83,7 @@ function load(key:string, Default:any) {
     }
     return Default;
 }
-function change_room_binder(room:string, element:HTMLElement) {
+function change_room_binder(room: string, element: HTMLElement) {
     return function () {
         window.zap_global.lastRenderedIndex = 0; // Reset last rendered index when changing room
         msg_container.innerHTML = "";
@@ -103,13 +103,13 @@ function change_room_binder(room:string, element:HTMLElement) {
         window.zap_global.reTick = true;
     };
 }
-function sendNotification(title:string, message:string) {
+function sendNotification(title: string, message: string) {
     // Only send if page is hidden and notifications are allowed
     if (document.hidden && Notification.permission === "granted") {
         new Notification(title, { body: message });
     }
 }
-function lbsend(a:any, b:any, c:any, d:any) {
+function lbsend(a: any, b: any, c: any, d: any) {
     window.send(a, b, c, d);
     window.get(a, b, c, d);
 }
@@ -163,7 +163,7 @@ function onTick() {
         }
     }
 
-    window.zap_global.servers.forEach(function (server:Server, i) {
+    window.zap_global.servers.forEach(function (server: Server, i) {
         let server_div = document.getElementById("server_" + server.id);
         let server_html = `${server.img ? `<img src="${server.img}" alt="${server.nickname}">` : ""} ${server.nickname}`;
         if (!server_div) {
@@ -187,11 +187,11 @@ function onTick() {
             const serverId = serverEl.id.replace("server_", "");
             let index = 0;
             for (const server of window.zap_global.servers) {
-                if (server.id === serverId) {break};
+                if (server.id === serverId) { break };
                 index++;
             }
-            if (index === window.zap_global.servers.length) {index = -1}; // not found
-            
+            if (index === window.zap_global.servers.length) { index = -1 }; // not found
+
             if (index !== -1) {
                 const removed = window.zap_global.servers.splice(index, 1)[0];
                 save("servers", window.zap_global.servers);
@@ -216,14 +216,14 @@ function onTick() {
     });
 }
 
-function get(type:number, account:string, content:any, room:string) {
+function get(type: number, account: string, content: any, room: string) {
     if (!window.zap_global) {
         return;
     } // Make sure site is loaded fully first
     if (!window.zap_global.messages[room]) {
         window.zap_global.messages[room] = [];
     }
-    var parsed_account:Account;
+    var parsed_account: Account;
     try {
         parsed_account = JSON.parse(account);
     }
@@ -342,13 +342,15 @@ function onLoad() {
 }
 
 document.title = "Zap Messenger Rewritten"
-var id = setInterval((function () { if (typeof window.toastui != "undefined") {
-    clearInterval(id);
-    onLoad();
-} }), 1);
+var id = setInterval((function () {
+    if (typeof window.toastui != "undefined") {
+        clearInterval(id);
+        onLoad();
+    }
+}), 1);
 setInterval((function () {
     window.send.ping();
-    Array.prototype.slice.call(online_bar.children).forEach(function (v:HTMLElement) { online_bar.removeChild(v).remove(); });
+    Array.prototype.slice.call(online_bar.children).forEach(function (v: HTMLElement) { online_bar.removeChild(v).remove(); });
     var now = Date.now();
     window.zap_global.online[window.zap_global.room].sort(function (a, b) { return a.account.name.localeCompare(b.account.name, undefined, { sensitivity: "base" }); });
     var seen = new Set();
