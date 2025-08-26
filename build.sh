@@ -30,14 +30,27 @@ fi
 if [[ "$NEW_HASH" != "$OLD_HASH" ]] || $flag_f; then
     echo "Source changed, rebuilding..."
 
+    echo "Starting TS Check"
     rm -rf dist/ts/*
-    tsc --project tsconfig.json
-    find dist/ts -type f -name '*.js' -exec bash -c 'mv "$0" "${0%.js}.str.js"' {} \;
+    tsc --noEmit
+    echo "Building TS"
+    npx esbuild src/main.ts --bundle --outfile=dist/ts/main.js
+    find dist/ts -type f -exec bash -c '
+  for f; do
+    dir=$(dirname "$f")
+    base=$(basename "$f")
+    mv "$f" "$dir/str.$base"
+  done
+' bash {} +
+
+    echo "TS Built"
     
+    echo "Packing ZAP"
     npx webpack
     rm -f dist/bundle.js
     latest_file=$(ls -t dist/ | head -n 1)
     cp "dist/$latest_file" dist/bundle.js
+    echo "Done!"
 
     # Save the new hash
     echo "$NEW_HASH" > "$HASH_FILE"

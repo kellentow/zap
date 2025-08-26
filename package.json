@@ -15,8 +15,13 @@
   "author": "Kellen",
   "license": "MPL-2.0",
   "dependencies": {
+    "@toast-ui/editor": "^3.2.2",
     "acorn": "^8.15.0",
-    "quill": "^2.0.3",
     "typescript": "^5.9.2"
+  },
+  "overrides": {
+    "prosemirror-model": "1.18.3",
+    "prosemirror-commands": "1.5.2",
+    "prosemirror-state": "1.4.3"
   }
 }

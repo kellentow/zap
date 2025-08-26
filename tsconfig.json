@@ -2,10 +2,15 @@
   "compilerOptions": {
     "target": "es2022",
     "lib": ["es2022", "dom"],
+    "typeRoots": ["./types", "./node_modules/@types"],
     "esModuleInterop": true,
     "noImplicitAny": true,
     "moduleResolution": "node",
-    "outDir": "dist/ts"
+    "outDir": "dist/ts",
+    "baseUrl": ".",
+    "paths": {
+      "@t/*": ["node_modules/@toast-ui/editor/types/*"]
+    }
   },
   "include": ["src/**/*.ts"]
 }

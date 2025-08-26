@@ -23,7 +23,7 @@ module.exports = {
         type: 'asset/source',
       },
       {
-        test: /\.str\.js$/,
+        test: /str\..*/,
         type: 'asset/source',
       },
     ],
