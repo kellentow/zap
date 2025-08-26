@@ -30,8 +30,8 @@ fi
 if [[ "$NEW_HASH" != "$OLD_HASH" ]] || $flag_f; then
     echo "Source changed, rebuilding..."
 
-    rm -r dist/ts/*
-    tsc src/*.ts --outDir dist/ts
+    rm -rf dist/ts/*
+    tsc --project tsconfig.json
     find dist/ts -type f -name '*.js' -exec bash -c 'mv "$0" "${0%.js}.str.js"' {} \;
     
     npx webpack

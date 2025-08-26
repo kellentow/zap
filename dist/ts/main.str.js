@@ -117,15 +117,16 @@ function onTick() {
         location.reload(); // Reload if div is not found
         return;
     }
-    var messages = window.zap_global.messages[window.zap_global.room] || [];
-    for (var i = window.zap_global.lastRenderedIndex; i < messages.length; i++) {
-        var msg = messages[i];
+    const messages = window.zap_global.messages[window.zap_global.room] || [];
+    for (let i = window.zap_global.lastRenderedIndex; i < messages.length; i++) {
+        let msg = messages[i];
         try {
-            var msg_div = document.createElement("div");
+            let msg_div = document.createElement("div");
             msg_div.className = "msg";
             msg_div.id = "msg_" + i;
-            msg_div.innerHTML = "<strong>".concat(msg.account.name, "</strong> \n            <span class=\"timestamp\">").concat(new Date(msg.timestamp).toLocaleTimeString(), "</span><br>");
-            var container = document.createElement('div');
+            msg_div.innerHTML = `<strong>${msg.account.name}</strong> 
+            <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span><br>`;
+            let container = document.createElement('div');
             container.innerHTML = msg.content;
             msg_div.appendChild(container);
             msg_container.appendChild(msg_div);
@@ -139,8 +140,8 @@ function onTick() {
         }
     }
     window.zap_global.servers.forEach(function (server, i) {
-        var server_div = document.getElementById("server_" + server.id);
-        var server_html = "".concat(server.img ? "<img src=\"".concat(server.img, "\" alt=\"").concat(server.nickname, "\">") : "", " ").concat(server.nickname);
+        let server_div = document.getElementById("server_" + server.id);
+        let server_html = `${server.img ? `<img src="${server.img}" alt="${server.nickname}">` : ""} ${server.nickname}`;
         if (!server_div) {
             server_div = document.createElement("div");
             server_div.className = "server";
@@ -155,14 +156,13 @@ function onTick() {
         }
     });
     div.addEventListener("contextmenu", function (event) {
-        var target = event.target;
-        var serverEl = target.closest('[id^="server_"]'); // safer than direct id access
+        const target = event.target;
+        const serverEl = target.closest('[id^="server_"]'); // safer than direct id access
         if (serverEl && event.button === 2) {
             event.preventDefault();
-            var serverId = serverEl.id.replace("server_", "");
-            var index = 0;
-            for (var _i = 0, _a = window.zap_global.servers; _i < _a.length; _i++) {
-                var server = _a[_i];
+            const serverId = serverEl.id.replace("server_", "");
+            let index = 0;
+            for (const server of window.zap_global.servers) {
                 if (server.id === serverId) {
                     break;
                 }
@@ -174,17 +174,17 @@ function onTick() {
             }
             ; // not found
             if (index !== -1) {
-                var removed = window.zap_global.servers.splice(index, 1)[0];
+                const removed = window.zap_global.servers.splice(index, 1)[0];
                 save("servers", window.zap_global.servers);
                 document.getElementById("servers_div").removeChild(serverEl);
-                console.log("Server ".concat(removed.nickname, " removed."));
+                console.log(`Server ${removed.nickname} removed.`);
                 if (window.zap_global.room === serverId) {
                     window.zap_global.room = window.zap_global.servers.length > 0 ? window.zap_global.servers[0].id : "1";
                     window.zap_global.lastRenderedIndex = 0;
                     chat_div.innerHTML = "";
                 }
-                document.querySelectorAll('.server').forEach(function (el) { return el.classList.remove('selected'); });
-                var newSelected = document.getElementById("server_" + window.zap_global.room);
+                document.querySelectorAll('.server').forEach(el => el.classList.remove('selected'));
+                const newSelected = document.getElementById("server_" + window.zap_global.room);
                 if (newSelected) {
                     newSelected.classList.add('selected');
                 }
@@ -252,7 +252,7 @@ msg_send.onclick = function () {
     }
 };
 server_adder.onclick = function () {
-    var server_name, server_id, server_img;
+    let server_name, server_id, server_img;
     while (!server_name) {
         server_name = prompt("Enter server name:");
     }
