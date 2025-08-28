@@ -1,27 +1,20 @@
 import Editor from '@toast-ui/editor';
 import '@toast-ui/editor/dist/toastui-editor.css';
-
-interface Server {
-    id: string;
-    nickname: string;
-    img: string; 
-}
-
-interface Account {  
-    id: string;
-    name: string;
-}
+import { save, load, senders, recievers, load_db } from './helpers'
+import { settings_menu, server_adder, msg_send, settings_button } from './elements'
+import { Message, zapGlobals } from './main.d'
+import { bind } from './loops'
 
 declare global {
-interface Window {
-    send: any;
-    get: Function;
-    zap_global: { messages: Record<string, any>; room: string; servers: Server[]; account: Account; reTick: boolean; lastRenderedIndex: number; dark: boolean; online: { [key: string]: { account: Account, list: number[], last: number, avg: number }[] }; editor: any };
-}
+    interface Window {
+        send: Function;
+        get: Function;
+        zap_global: zapGlobals;
+    }
 }
 
 window.zap_global = {
-    messages: load("messages", {}),
+    messages: {},
     room: "1",
     servers: load("servers", [{ id: "1", nickname: "General", img: "" }]), // {id, nickname, img}  
     account: load("account", {}), // Default 
@@ -30,93 +23,38 @@ window.zap_global = {
     dark: !load("dark", window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches), // Invert toggle for later inversion
     online: {},
     editor: undefined,
+    db: undefined
 };
+let request = window.indexedDB.open("ZapMessengerRW", 1);
+request.onsuccess = function (e) {
+    window.zap_global.db = request.result
+}
+request.onupgradeneeded = (event) => {
+    const db = request.result;
+    let needed: [string, IDBObjectStoreParameters?][] = [];
+
+    switch (event.oldVersion) {
+        case 0:
+            needed.push(["messages", { keyPath: "id", autoIncrement: true }]);
+    }
+
+    needed.forEach(([name, options]) => {
+        if (!db.objectStoreNames.contains(name)) {
+            db.createObjectStore(name, options);
+        }
+    });
+};
+
+let {onPing, onTick} = bind(window.zap_global)
 
 if (!window.zap_global.account.name) {
     promptForAccount();
 }
 
-if (typeof window.send !== 'function') {
-    console.warn("send() not defined. Using mock send.");
-    window.send = function (a: any, b: any, c: any, d: any) {
-        console.log("Mock send triggered with:", [a, b, c, d]);
-    };
-}
-
-let msg_send = document.getElementById("msg_send");
-let online_bar = document.getElementById("status_bar");
-let msg_input = document.getElementById("msg_input");
-let chat_div = document.getElementById("chat_inner_div");
-let msg_container = document.getElementById("msg_container");
-let servers_div = document.getElementById("servers_div");
-let info_floater = document.getElementById("info_floater");
-let server_adder = document.getElementById("serveradd");
-let typing_indicator = document.getElementById("typing");
-let div = document.getElementById("chat_div");
-let css_element = document.getElementById("css");
-let settings_menu = document.getElementById("settings_menu");
-let settings_button = document.getElementById("settings_button");
-
 if (Notification.permission === "default") {
     Notification.requestPermission();
 }
 
-//#region Utils
-window.send.message = function (text: string) {
-    let time = Date.now();
-    console.log(text);
-    lbsend(0, JSON.stringify(window.zap_global.account), [time, text], window.zap_global.room);
-};
-window.send.ping = function () {
-    lbsend(1, JSON.stringify(window.zap_global.account), Date.now(), window.zap_global.room);
-};
-function save(key: string, value: any) {
-    localStorage.setItem(key, JSON.stringify(value));
-}
-function load(key: string, Default: any) {
-    Default = Default || null;
-    let value = localStorage.getItem(key);
-    if (value) {
-        try {
-            return JSON.parse(value);
-        }
-        catch (e) {
-            console.error("Error parsing JSON for key ".concat(key, ":"), e);
-            return Default;
-        }
-    }
-    return Default;
-}
-function change_room_binder(room: string, element: HTMLElement) {
-    return function () {
-        window.zap_global.lastRenderedIndex = 0; // Reset last rendered index when changing room
-        msg_container.innerHTML = "";
-        window.zap_global.room = room;
-        console.log("Changed room to:", room);
-        // Optionally, clear the messages for the new room
-        window.zap_global.messages[room] = window.zap_global.messages[room] || [];
-        window.zap_global.servers.forEach(function (server) {
-            let server_div = document.getElementById("server_" + server.id);
-            if (server_div) {
-                server_div.classList.remove("selected");
-            }
-        });
-        if (element) {
-            element.classList.add("selected");
-        }
-        window.zap_global.reTick = true;
-    };
-}
-function sendNotification(title: string, message: string) {
-    // Only send if page is hidden and notifications are allowed
-    if (document.hidden && Notification.permission === "granted") {
-        new Notification(title, { body: message });
-    }
-}
-function lbsend(a: any, b: any, c: any, d: any) {
-    window.send(a, b, c, d);
-    window.get(a, b, c, d);
-}
 function promptForAccount() {
     let name = null;
     while (!name || name.trim().length === 0) {
@@ -131,152 +69,12 @@ function promptForAccount() {
     };
     save("account", window.zap_global.account);
 }
-//#endregion
-
-function onTick() {
-    console.log("A")
-    if (!window.zap_global.reTick) { return };
-    window.zap_global.reTick = false
-
-    if (!div) {
-        console.warn("Main div not found, reloading page to avoid conflicts.");
-        location.reload(); // Reload if div is not found
-        return;
-    }
-
-    const messages = window.zap_global.messages[window.zap_global.room] || [];
-    for (let i = window.zap_global.lastRenderedIndex; i < messages.length; i++) {
-        let msg = messages[i];
-        try {
-            let msg_div = document.createElement("div");
-            msg_div.className = "msg";
-            msg_div.id = "msg_" + i;
-            msg_div.innerHTML = `<strong>${msg.account.name}</strong> 
-            <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span><br>`;
-            let container = document.createElement('div');
-            container.innerHTML = msg.content;
-            msg_div.appendChild(container)
-
-            msg_container.appendChild(msg_div);
-            window.zap_global.lastRenderedIndex = messages.length;
-            if ((msg_container.scrollHeight - msg_container.scrollTop - msg_container.clientHeight) <= 200) {
-                msg_container.scrollTop = msg_container.scrollHeight
-            }
-        } catch (e) {
-            console.log("Failed to render message", msg, e)
-        }
-    }
-
-    window.zap_global.servers.forEach(function (server: Server, i) {
-        let server_div = document.getElementById("server_" + server.id);
-        let server_html = `${server.img ? `<img src="${server.img}" alt="${server.nickname}">` : ""} ${server.nickname}`;
-        if (!server_div) {
-            server_div = document.createElement("div");
-            server_div.className = "server";
-            server_div.id = "server_" + server.id;
-            server_div.innerHTML = server_html;
-            server_div.onclick = change_room_binder(server.id, server_div);
-            servers_div.insertBefore(server_div, servers_div.lastChild);
-        } else {
-            server_div.innerHTML = server_html;
-            server_div.onclick = change_room_binder(server.id, server_div);
-        }
-    });
-
-    div.addEventListener("contextmenu", function (event: PointerEvent) {
-        const target = event.target as Element
-        const serverEl = target.closest('[id^="server_"]'); // safer than direct id access
-        if (serverEl && event.button === 2) {
-            event.preventDefault();
-            const serverId = serverEl.id.replace("server_", "");
-            let index = 0;
-            for (const server of window.zap_global.servers) {
-                if (server.id === serverId) { break };
-                index++;
-            }
-            if (index === window.zap_global.servers.length) { index = -1 }; // not found
-
-            if (index !== -1) {
-                const removed = window.zap_global.servers.splice(index, 1)[0];
-                save("servers", window.zap_global.servers);
-
-                document.getElementById("servers_div").removeChild(serverEl);
-                console.log(`Server ${removed.nickname} removed.`);
-                if (window.zap_global.room === serverId) {
-                    window.zap_global.room = window.zap_global.servers.length > 0 ? window.zap_global.servers[0].id : "1";
-                    window.zap_global.lastRenderedIndex = 0;
-                    chat_div.innerHTML = "";
-                }
-
-                document.querySelectorAll('.server').forEach(el => el.classList.remove('selected'));
-                const newSelected = document.getElementById("server_" + window.zap_global.room);
-                if (newSelected) {
-                    newSelected.classList.add('selected');
-                }
-            }
-
-            return;
-        }
-    });
-}
-
-function get(type: number, account: string, content: any, room: string) {
-    if (!window.zap_global) {
-        return;
-    } // Make sure site is loaded fully first
-    if (!window.zap_global.messages[room]) {
-        window.zap_global.messages[room] = [];
-    }
-    let parsed_account: Account;
-    try {
-        parsed_account = JSON.parse(account);
-    }
-    catch (e) {
-        console.error("Invalid JSON acc:", e.message);
-        return;
-    }
-    console.log("Received data:", { type: type, parsed_account: parsed_account, content: content, room: room });
-    if (type == 0) {
-        var timestamp = content[0], message = content[1];
-        console.log("Received message in room ".concat(room, ":"), { timestamp: timestamp, parsed_account: parsed_account, message: message });
-        sendNotification("Zap Messenger:  " + parsed_account.name + " sent you a message!", message);
-        window.zap_global.messages[room].push({
-            timestamp: timestamp,
-            account: parsed_account,
-            content: message
-        });
-        save("messages", window.zap_global.messages);
-    }
-    else if (type == 1) {
-        if (!Object.prototype.hasOwnProperty.call(window.zap_global.online, room)) {
-            window.zap_global.online[room] = [];
-        }
-        let old_l = window.zap_global.online[room].filter(function (v) { v.account.id == parsed_account.id; });
-        if (old_l.length == 0) {
-            old_l = [{ account: parsed_account, last: 20000, list: [], avg: Date.now() }];
-        }
-        let old = old_l[0];
-        var list = old.list, last = old.last;
-        last = Date.now() - content;
-        list.push(last);
-        if (list.length > 10) {
-            list.shift();
-        }
-        let avg_1 = 0;
-        list.forEach(function (delta) {
-            avg_1 += delta;
-        });
-        avg_1 /= list.length;
-        window.zap_global.online[room].push({ account: parsed_account, last: content, list: list, avg: avg_1 });
-    }
-    window.zap_global.reTick = true;
-}
 
 msg_send.onclick = function () {
     if (window.zap_global.editor) {
         let content = window.zap_global.editor.getHTML();
         window.zap_global.editor.setHTML('');
-        window.send.message(content);
+        senders.message(content);
     }
 };
 
@@ -339,8 +137,12 @@ dark_img.style.height = "20px";
 dark_img.style.width = "20px";
 dark_toggle.appendChild(dark_img);
 settings_menu.appendChild(dark_toggle);
-//#endregion
+//#endregion 
 function onLoad() {
+    load_db(window.zap_global.db,"messages").then((messages)=>{
+        let room_messages:Message[] = (messages.filter((a:Message)=>{a.id && a.id.startsWith(window.zap_global.room+"/")}) as Message[])
+        window.zap_global.messages[window.zap_global.room] = room_messages
+    })
     dark_toggle.click(); // Set initial dark mode state
     setInterval(onTick, 250); // Start the animation frame loop
 }
@@ -351,35 +153,6 @@ let id = setInterval((function () {
         clearInterval(id);
         onLoad();
     }
-}), 1);
-setInterval((function () {
-    window.send.ping();
-    Array.prototype.slice.call(online_bar.children).forEach(function (v: HTMLElement) { online_bar.removeChild(v).remove(); });
-    let now = Date.now();
-    window.zap_global.online[window.zap_global.room].sort(function (a, b) { return a.account.name.localeCompare(b.account.name, undefined, { sensitivity: "base" }); });
-    let seen = new Set();
-    window.zap_global.online[window.zap_global.room] =
-        window.zap_global.online[window.zap_global.room].filter(function (user) {
-            if (seen.has(user.account.id)) {
-                return false;
-            }
-            seen.add(user.account.id);
-            return true;
-        });
-    window.zap_global.online[window.zap_global.room].forEach(function (value) {
-        if ((value.last - now + 65000) > 0) {
-            let container = document.createElement("div");
-            container.className = "user_status";
-            let status_dot = document.createElement("div");
-            status_dot.style.cssText = "border-radius:9999px; border-width:2px; width:15px; height:15px; " + ((value.avg < 900) ? "background-color: green;" : ((value.avg < 30000) ? "background-color: yellow;" : "background-color: red;"));
-            container.appendChild(status_dot);
-            let username_text = document.createElement("p");
-            username_text.innerText = value.account.name;
-            username_text.style.margin = "5px";
-            username_text.style.marginLeft = "10px";
-            container.appendChild(username_text);
-            online_bar.appendChild(container);
-        }
-    });
-}), 500);
-window.get = get
+}), 100);
+setInterval(onPing, 500);
+window.get = recievers.bind(window.zap_global).all

@@ -113,10 +113,9 @@
 }
 
 #msg_container {
-    width:100;
-    height:calc(100% - 50px);
+    height:100%;
     overflow-y: scroll;
-    padding-bottom: 150px;
+    padding-bottom: 300px;
 }
 
 .msg {
