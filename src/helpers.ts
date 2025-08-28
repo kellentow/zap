@@ -32,7 +32,7 @@ function change_room_binder(global: zapGlobals, room: string, element: HTMLEleme
 if (typeof window.send !== 'function') {
     console.warn("send() not defined. Using mock send.");
     window.send = function (a: any, b: any, c: any, d: any) {
-        console.log("Mock send triggered with:", [a, b, c, d]);
+        console.debug("Mock send triggered with:", [a, b, c, d]);
     };
 }
 
@@ -45,7 +45,6 @@ function save(key: string, value: any) {
     localStorage.setItem(key, JSON.stringify(value));
 }
 function load(key: string, Default: any) {
-    Default = Default || null;
     let value = localStorage.getItem(key);
     if (value) {
         try {
@@ -91,7 +90,6 @@ function load_db<T>(db: IDBDatabase, table: string): Promise<T[]> {
 let senders: { message: Function, ping: Function, any: Function, bind: Function } = {
     message: function (global: zapGlobals, text: string) {
         let time = Date.now();
-        console.log(text);
         lbsend(0, JSON.stringify(global.account), [time, text, `${global.room}/"${crypto.randomUUID()}-${crypto.randomUUID()}`], global.room);
     },
     ping: function (global: zapGlobals) {
@@ -112,7 +110,7 @@ let senders: { message: Function, ping: Function, any: Function, bind: Function 
 let recievers: { message: Function, ping: Function, all:Function, bind:Function} = {
     message: function (global: zapGlobals, account: Account, content: [timestamp: number, message: string, id:string], room: string) {
         var timestamp = content[0], message = content[1], id = content[2];
-        console.log("Received message in room ".concat(room, ":"), { timestamp, account, message });
+        console.debug("Received message in room ".concat(room, ":"), { timestamp, account, message });
         sendNotification("Zap Messenger:  " + account.name + " sent you a message!", message);
         let new_message:Message = {
             timestamp: timestamp,
@@ -161,7 +159,7 @@ let recievers: { message: Function, ping: Function, all:Function, bind:Function}
         }
         if (type == 0) { recievers.message(global,account, content, room) } else
         if (type == 1) { recievers.ping(global,account, content, room) } else
-        { console.log("what tf is a "+type)}
+        { console.warn(`${type} is a unknown message type`) }
     },
     bind: function (global:zapGlobals) {
         let new_funcs:any = {}

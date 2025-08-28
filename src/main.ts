@@ -1,5 +1,6 @@
 import Editor from '@toast-ui/editor';
 import '@toast-ui/editor/dist/toastui-editor.css';
+import '@toast-ui/editor/dist/theme/toastui-editor-dark.css'
 import { save, load, senders, recievers, load_db } from './helpers'
 import { settings_menu, server_adder, msg_send, settings_button } from './elements'
 import { Message, zapGlobals } from './main.d'

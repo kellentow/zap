@@ -50,8 +50,8 @@ if [[ "$NEW_HASH" != "$OLD_HASH" ]] || $flag_f; then
     npx webpack
     rm -f dist/bundle.js
     latest_file=$(ls -t dist/ | head -n 1)
-    cp "dist/$latest_file" dist/bundle.js
-    mv "dist/$latest_file "dist/bundles/$latest_file"
+    cp "dist/$latest_file" "dist/bundle.js"
+    mv "dist/$latest_file" "dist/bundles/$latest_file"
     echo "Done!"
 
     # Save the new hash
