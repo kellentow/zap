@@ -4,7 +4,7 @@ import {zapGlobals,Server} from './main.d'
 import {change_room_binder,save} from './helpers'
 
 function onPing(global:zapGlobals) {
-    senders.ping();
+    senders.ping(global);
     Array.prototype.slice.call(online_bar.children).forEach(function (v: HTMLElement) { online_bar.removeChild(v).remove(); });
     let now = Date.now();
     global.online[global.room].sort(function (a, b) { return a.account.name.localeCompare(b.account.name, undefined, { sensitivity: "base" }); });

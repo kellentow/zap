@@ -1,5 +1,9 @@
 import { Account, Message, zapGlobals } from "./main.d";
-import { msg_container } from "./elements"
+import { msg_container } from "./elements";
+import { crypto_manager, crypto_session } from "./crypto";
+
+let session_crypto: crypto_manager = new crypto_manager("");
+let encrytion_enabled = false;
 
 function sendNotification(title: string, message: string) {
     // Only send if page is hidden and notifications are allowed
@@ -36,9 +40,27 @@ if (typeof window.send !== 'function') {
     };
 }
 
-function lbsend(a: any, b: any, c: any, d: any) {
-    window.send(a, b, c, d);
-    window.get(a, b, c, d);
+function lbsend(a: any, b: any, c: any, d: any, encrypt: boolean = undefined, encryption_sessions: crypto_session[] = []) {
+    if (typeof encrypt == "undefined") {
+        encrypt = encrytion_enabled
+    }
+    if (encrypt) {
+        let messages: any[][] = []
+        encryption_sessions.forEach((session) => {
+            let enc_a = session.encrypt(JSON.stringify(a));
+            let enc_b = session.encrypt(JSON.stringify(b));
+            let enc_c = session.encrypt(JSON.stringify(c));
+            let enc_d = session.encrypt(JSON.stringify(d));
+            Promise.all([enc_a, enc_b, enc_c, enc_d]).then(([a, b, c, d]) => {
+                messages.push([a,b,c,d,session.id])
+            })
+        })
+        window.send(messages)
+        window.get(messages)
+    } else {
+        window.send(a, b, c, d);
+        window.get(a, b, c, d);
+    }
 }
 
 function save(key: string, value: any) {
@@ -87,15 +109,43 @@ function load_db<T>(db: IDBDatabase, table: string): Promise<T[]> {
     });
 }
 
-let senders: { message: Function, ping: Function, any: Function, bind: Function } = {
-    message: function (global: zapGlobals, text: string) {
+let senders: {
+    message: Function, ping: Function, join: Function
+    crypto: Function, crypto_request: Function, crypto_response: Function,
+    base: Function, bind: Function
+} = {
+    message: function (global: zapGlobals, text: string, recipients?: string[]) { // Send a message
+        if (typeof text !== "string") {
+            text = JSON.stringify(text);
+        }
+        if (text.length > 2 ** 12) { //4kb max
+            console.warn("Message too long, not sending.");
+            return;
+        }
         let time = Date.now();
-        lbsend(0, JSON.stringify(global.account), [time, text, `${global.room}/"${crypto.randomUUID()}-${crypto.randomUUID()}`], global.room);
+        let message_id = `${global.room}/"${crypto.randomUUID()}-${crypto.randomUUID()}`
+        lbsend(0, JSON.stringify(global.account), [time, text, message_id], global.room);
     },
-    ping: function (global: zapGlobals) {
+    ping: function (global: zapGlobals) { // Send a ping
         lbsend(1, JSON.stringify(global.account), Date.now(), global.room);
     },
-    any: window.send,
+    join: function (global: zapGlobals) { // Send a join notif
+        lbsend(2, JSON.stringify(global.account), Date.now(), global.room)
+        senders.crypto_request(global)
+    },
+    crypto: function (global: zapGlobals, message: any) { // crypto base
+        if (typeof message !== "string") {
+            message = JSON.stringify(message);
+        }
+        lbsend(255, JSON.stringify(global.account), message, global.room, false);
+    },
+    crypto_request: function (global: zapGlobals, account: Account) { // Request a public key
+        senders.crypto(global, { type: "KEYrequest", id: global.account.id });
+    },
+    crypto_response: function (global: zapGlobals, account: Account) { // Send your public key
+        senders.crypto(global, { type: "KEYresponse", id: global.account.id, key: session_crypto.self_keys.publicKey });
+    },
+    base: function (global: zapGlobals, a: any, b: any, c: any, d: any) { window.send(a, b, c, d) },
     bind: function (global: zapGlobals) {
         let new_sender: any = {}
         Object.entries(senders).forEach(([k, v]) => {
@@ -107,19 +157,23 @@ let senders: { message: Function, ping: Function, any: Function, bind: Function 
     }
 }
 
-let recievers: { message: Function, ping: Function, all:Function, bind:Function} = {
-    message: function (global: zapGlobals, account: Account, content: [timestamp: number, message: string, id:string], room: string) {
+let recievers: {
+    message: Function, ping: Function,
+    crypto: Function, join: Function,
+    all: Function, bind: Function
+} = {
+    message: function (global: zapGlobals, account: Account, content: [timestamp: number, message: string, id: string], room: string) {
         var timestamp = content[0], message = content[1], id = content[2];
         console.debug("Received message in room ".concat(room, ":"), { timestamp, account, message });
         sendNotification("Zap Messenger:  " + account.name + " sent you a message!", message);
-        let new_message:Message = {
+        let new_message: Message = {
             timestamp: timestamp,
             account,
             content: message,
             id
         }
         global.messages[room].push(new_message);
-        save_db_key(global.db,"messages",id,new_message);
+        save_db_key(global.db, "messages", id, new_message);
     },
     ping: function (global: zapGlobals, account: Account, content: number, room: string) {
         if (!Object.prototype.hasOwnProperty.call(global.online, room)) {
@@ -143,7 +197,56 @@ let recievers: { message: Function, ping: Function, all:Function, bind:Function}
         avg_1 /= list.length;
         global.online[room].unshift({ account, last: content, list: list, avg: avg_1 });
     },
-    all: function (global: zapGlobals, type: number, stringed_account: string, content: any, room: string) {
+    join: function (global: zapGlobals, account: Account, content: number, room: string) { //ping but only once and unencrypted
+        recievers.ping(global, account, content, room)
+    },
+    crypto: function (global: zapGlobals, account: Account, content: any, room: string) {
+        if (typeof content === "string") {
+            try {
+                content = JSON.parse(content);
+            } catch (e) {
+                console.error("Invalid JSON crypto:", e.message, content);
+                return;
+            }
+        }
+
+        if (!content.type) {
+            console.warn("No type in crypto message:", content);
+            return;
+        }
+
+        if (content.version > crypto_manager.version) {
+            console.warn("Other user is on a newer version of the cryptography manager:", content.version, ">", crypto_manager.version);
+            console.warn("Some features may not work as expected and may cause glitches.");
+        }
+
+        if (content.type == "KEYrequest") {
+            console.log("Received key request from", account.id);
+            senders.crypto_response(global, account);
+        } else if (content.type == "KEYresponse") {
+            console.log("Received key response from", account.id);
+            if (content.key && content.key != "E2EE DENIED") {
+                let session = session_crypto.add_session(account.id, content.key);
+            } else {
+                console.warn("User ".concat(account.id, " denied sending their public key."));
+            }
+        } else {
+            console.warn("Unknown crypto message type:", content);
+        }
+    },
+    all: async function (global: zapGlobals, type: number | any[], stringed_account?: string, content?: any, room?: string) {
+        if (typeof type != "number") { // Encrypted message, find our block
+            for (let i = 0; i < (type as any[]).length; i++) {
+                let message = (type as any[])[i]
+                if (message[4] == global.account.id) {
+                    type = JSON.parse(await session_crypto.decrypt(message[0]))
+                    stringed_account = JSON.parse(await session_crypto.decrypt(message[1]))
+                    content = JSON.parse(await session_crypto.decrypt(message[2]))
+                    room = JSON.parse(await session_crypto.decrypt(message[3]))
+                }
+            }
+        }
+
         if (!global) {
             return;
         } // Make sure site is loaded fully first
@@ -157,15 +260,14 @@ let recievers: { message: Function, ping: Function, all:Function, bind:Function}
             console.error("Invalid JSON acc:", e.message, stringed_account);
             return;
         }
-        if (type == 0) { recievers.message(global,account, content, room) } else
-        if (type == 1) { recievers.ping(global,account, content, room) } else
-        { console.warn(`${type} is a unknown message type`) }
+        if (type == 0) { recievers.message(global, account, content, room) } else
+            if (type == 1) { recievers.ping(global, account, content, room) } else { console.warn(`${type} is a unknown message type`) }
     },
-    bind: function (global:zapGlobals) {
-        let new_funcs:any = {}
-        new_funcs.message = (...args:any[]) => {recievers.message(global,...args)}
-        new_funcs.ping = (...args:any[]) => {recievers.ping(global,...args)}
-        new_funcs.all = (...args:any[]) => {recievers.all(global,...args)}
+    bind: function (global: zapGlobals) {
+        let new_funcs: any = {}
+        new_funcs.message = (...args: any[]) => { recievers.message(global, ...args) }
+        new_funcs.ping = (...args: any[]) => { recievers.ping(global, ...args) }
+        new_funcs.all = (...args: any[]) => { recievers.all(global, ...args) }
         return new_funcs
     }
 }
