@@ -41,15 +41,16 @@ async function makeKeys() {
 
 class crypto_manager {
     static version = 1;
-    self_keys: any;
+    self_keys: CryptoKeyPair;
     sessions: {[key:string]: crypto_session} = {};
 
-    constructor(self_keys:string) {
-        if (!self_keys) {
-            this.self_keys = makeKeys().then((new_keys)=>{return new_keys;});
-        } else {
-            this.self_keys = self_keys;
-        }
+    constructor(self_keys:CryptoKeyPair) {
+        this.self_keys = self_keys;
+    }
+
+    static async init() {
+        const { keyPair } = await makeKeys();
+        return new crypto_manager(keyPair);
     }
 
     get_session(id:string): crypto_session {

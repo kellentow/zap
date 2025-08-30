@@ -1,10 +1,11 @@
-import {senders} from './helpers'
-import {online_bar,div,msg_container,servers_div,chat_div} from './elements'
-import {zapGlobals,Server} from './main.d'
-import {change_room_binder,save} from './helpers'
+import { senders } from './helpers'
+import { online_bar, div, msg_container, servers_div, chat_div } from './elements'
+import { zapGlobals, Server } from './main.d'
+import { change_room_binder, save } from './helpers'
 
-function onPing(global:zapGlobals) {
-    senders.ping(global);
+function onPing(global: zapGlobals) {
+    if (!global.online[global.room]) { global.online[global.room] = [] }
+    senders.ping(global, window.zap_global.online[window.zap_global.room].map((ping) => { return ping.account.id }));
     Array.prototype.slice.call(online_bar.children).forEach(function (v: HTMLElement) { online_bar.removeChild(v).remove(); });
     let now = Date.now();
     global.online[global.room].sort(function (a, b) { return a.account.name.localeCompare(b.account.name, undefined, { sensitivity: "base" }); });
@@ -34,7 +35,7 @@ function onPing(global:zapGlobals) {
     });
 }
 
-function onTick(global:zapGlobals) {
+function onTick(global: zapGlobals) {
     console.log("A")
     if (!global.reTick) { return };
     global.reTick = false
@@ -77,11 +78,11 @@ function onTick(global:zapGlobals) {
             server_div.className = "server";
             server_div.id = "server_" + server.id;
             server_div.innerHTML = server_html;
-            server_div.onclick = change_room_binder(global,server.id, server_div);
+            server_div.onclick = change_room_binder(global, server.id, server_div);
             servers_div.insertBefore(server_div, servers_div.lastChild);
         } else {
             server_div.innerHTML = server_html;
-            server_div.onclick = change_room_binder(global,server.id, server_div);
+            server_div.onclick = change_room_binder(global, server.id, server_div);
         }
     });
 
@@ -122,11 +123,11 @@ function onTick(global:zapGlobals) {
     });
 }
 
-function bind(global:zapGlobals) {
-    let new_funcs:any = {}
-    new_funcs.onTick = function () {onTick(global)}
-    new_funcs.onPing = function () {onPing(global)}
+function bind(global: zapGlobals) {
+    let new_funcs: any = {}
+    new_funcs.onTick = function () { onTick(global) }
+    new_funcs.onPing = function () { onPing(global) }
     return new_funcs
 }
 
-export {onPing, onTick, bind}
+export { onPing, onTick, bind }

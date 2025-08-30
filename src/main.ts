@@ -1,10 +1,8 @@
-import Editor from '@toast-ui/editor';
-import '@toast-ui/editor/dist/toastui-editor.css';
-import '@toast-ui/editor/dist/theme/toastui-editor-dark.css'
 import { save, load, senders, recievers, load_db } from './helpers'
 import { settings_menu, server_adder, msg_send, settings_button } from './elements'
 import { Message, zapGlobals } from './main.d'
 import { bind } from './loops'
+import { Editor } from './editor'
 
 declare global {
     interface Window {
@@ -120,18 +118,14 @@ dark_toggle.onclick = function () {
     }
     let md = "";
     if (window.zap_global.editor) {
-        md = window.zap_global.editor.getMarkdown();
+        md = window.zap_global.editor.getHTML();
         window.zap_global.editor.destroy();
     }
-    window.zap_global.editor = new Editor({
-        el: document.querySelector('div#msg_input'),
-        height: '300px',
-        initialEditType: 'wysiwyg',
-        previewStyle: 'tab',
-        usageStatistics: false,
-        theme: window.zap_global.dark ? 'dark' : 'light',
-    });
-    window.zap_global.editor.setMarkdown(md);
+    window.zap_global.editor = new Editor(
+        'div#msg_input',
+        window.zap_global.dark ? 'dark' : 'light'
+    );
+    window.zap_global.editor.setHTML(md);
 };
 let dark_img = document.createElement("img");
 dark_img.src = "https://cdn-icons-png.flaticon.com/512/12377/12377255.png ";
@@ -151,9 +145,11 @@ function onLoad() {
 
 document.title = "Zap Messenger Rewritten"
 let id = setInterval((function () {
-    if (typeof Editor != "undefined") {
+    if (document.readyState == "complete") {
         clearInterval(id);
         onLoad();
+        senders.join(window.zap_global);
+        senders.crypto_request(window.zap_global);
     }
 }), 100);
 setInterval(onPing, 500);

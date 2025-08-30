@@ -3,7 +3,6 @@ import cssContent from './body.css';
 import manifestData from './manifest.json'
 import workerString from './main_worker.str.js'
 import mainString from '../dist/ts/str.main.js'
-import maincssString from '../dist/ts/str.main.css'
 
 function create_script(src) {
     let script = document.createElement("script")
@@ -63,7 +62,6 @@ for (let i = 0; i < document.body.children.length; i++) {
 
 console.log("HTML & CSS")
 create_css(cssContent)
-create_css(maincssString)
 create_html(htmlContent, document.body)
 
 // Manifest

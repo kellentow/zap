@@ -2,8 +2,12 @@ import { Account, Message, zapGlobals } from "./main.d";
 import { msg_container } from "./elements";
 import { crypto_manager, crypto_session } from "./crypto";
 
-let session_crypto: crypto_manager = new crypto_manager("");
-let encrytion_enabled = false;
+let session_crypto: crypto_manager = null
+crypto_manager.init().then((manager) => {
+    session_crypto = manager
+});
+
+let encrytion_enabled = true;
 
 function sendNotification(title: string, message: string) {
     // Only send if page is hidden and notifications are allowed
@@ -52,11 +56,10 @@ function lbsend(a: any, b: any, c: any, d: any, encrypt: boolean = undefined, en
             let enc_c = session.encrypt(JSON.stringify(c));
             let enc_d = session.encrypt(JSON.stringify(d));
             Promise.all([enc_a, enc_b, enc_c, enc_d]).then(([a, b, c, d]) => {
-                messages.push([a,b,c,d,session.id])
+                messages.push([a, b, c, d, session.id])
             })
         })
-        window.send(messages)
-        window.get(messages)
+        lbsend(messages, null, null, null, false)
     } else {
         window.send(a, b, c, d);
         window.get(a, b, c, d);
@@ -124,13 +127,15 @@ let senders: {
         }
         let time = Date.now();
         let message_id = `${global.room}/"${crypto.randomUUID()}-${crypto.randomUUID()}`
-        lbsend(0, JSON.stringify(global.account), [time, text, message_id], global.room);
+        let recipients_sessions: crypto_session[] = (encrytion_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
+        lbsend(0, JSON.stringify(global.account), [time, text, message_id], global.room, undefined, recipients_sessions);
     },
-    ping: function (global: zapGlobals) { // Send a ping
-        lbsend(1, JSON.stringify(global.account), Date.now(), global.room);
+    ping: function (global: zapGlobals, recipients?: string[]) { // Send a ping
+        let recipients_sessions: crypto_session[] = (encrytion_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
+        lbsend(1, JSON.stringify(global.account), Date.now(), global.room, true, recipients_sessions);
     },
     join: function (global: zapGlobals) { // Send a join notif
-        lbsend(2, JSON.stringify(global.account), Date.now(), global.room)
+        lbsend(2, JSON.stringify(global.account), Date.now(), global.room, false)
         senders.crypto_request(global)
     },
     crypto: function (global: zapGlobals, message: any) { // crypto base
@@ -139,11 +144,13 @@ let senders: {
         }
         lbsend(255, JSON.stringify(global.account), message, global.room, false);
     },
-    crypto_request: function (global: zapGlobals, account: Account) { // Request a public key
+    crypto_request: function (global: zapGlobals) { // Request a public key
         senders.crypto(global, { type: "KEYrequest", id: global.account.id });
     },
-    crypto_response: function (global: zapGlobals, account: Account) { // Send your public key
-        senders.crypto(global, { type: "KEYresponse", id: global.account.id, key: session_crypto.self_keys.publicKey });
+    crypto_response: function (global: zapGlobals) { // Send your public key
+        window.crypto.subtle.exportKey("spki", session_crypto.self_keys.publicKey).then((exported) => {
+            senders.crypto(global, { type: "KEYresponse", id: global.account.id, public: btoa(String.fromCharCode(...new Uint8Array(exported))) }); // add stringified public key here
+        });
     },
     base: function (global: zapGlobals, a: any, b: any, c: any, d: any) { window.send(a, b, c, d) },
     bind: function (global: zapGlobals) {
@@ -224,9 +231,9 @@ let recievers: {
             console.log("Received key request from", account.id);
             senders.crypto_response(global, account);
         } else if (content.type == "KEYresponse") {
-            console.log("Received key response from", account.id);
-            if (content.key && content.key != "E2EE DENIED") {
-                let session = session_crypto.add_session(account.id, content.key);
+            console.log("Received key response from", account.id, content);
+            if (content.public && content.public != "E2EE DENIED") {
+                let session = session_crypto.add_session(account.id, content.public);
             } else {
                 console.warn("User ".concat(account.id, " denied sending their public key."));
             }
@@ -235,7 +242,8 @@ let recievers: {
         }
     },
     all: async function (global: zapGlobals, type: number | any[], stringed_account?: string, content?: any, room?: string) {
-        if (typeof type != "number") { // Encrypted message, find our block
+        console.log("type:", type, "account:", stringed_account, "content:", content, "room:", room)
+        if (!stringed_account) { // Encrypted message, find our block
             for (let i = 0; i < (type as any[]).length; i++) {
                 let message = (type as any[])[i]
                 if (message[4] == global.account.id) {
@@ -243,7 +251,13 @@ let recievers: {
                     stringed_account = JSON.parse(await session_crypto.decrypt(message[1]))
                     content = JSON.parse(await session_crypto.decrypt(message[2]))
                     room = JSON.parse(await session_crypto.decrypt(message[3]))
+                    console.log("Decrypted message:", { type, stringed_account, content, room })
+                    break;
                 }
+            }
+            if (!stringed_account) {
+                console.warn("No block for us in encrypted message, ignoring.");
+                return;
             }
         }
 
@@ -261,12 +275,16 @@ let recievers: {
             return;
         }
         if (type == 0) { recievers.message(global, account, content, room) } else
-            if (type == 1) { recievers.ping(global, account, content, room) } else { console.warn(`${type} is a unknown message type`) }
+            if (type == 1) { recievers.ping(global, account, content, room) } else
+                if (type == 2) { recievers.join(global, account, content, room) } else
+                    if (type == 255) { recievers.crypto(global, account, content, room) } else { console.warn(`${type} is a unknown message type`) }
     },
     bind: function (global: zapGlobals) {
         let new_funcs: any = {}
         new_funcs.message = (...args: any[]) => { recievers.message(global, ...args) }
         new_funcs.ping = (...args: any[]) => { recievers.ping(global, ...args) }
+        new_funcs.join = (...args: any[]) => { recievers.join(global, ...args) }
+        new_funcs.crypto = (...args: any[]) => { recievers.crypto(global, ...args) }
         new_funcs.all = (...args: any[]) => { recievers.all(global, ...args) }
         return new_funcs
     }
