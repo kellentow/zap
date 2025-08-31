@@ -74,7 +74,8 @@ msg_send.onclick = function () {
         let content = window.zap_global.editor.getHTML();
         window.zap_global.editor.setHTML('');
         let targets = window.zap_global.online[window.zap_global.room].map((ping)=>{return ping.account.id})
-        senders.message(content,targets);
+        console.log("Sending to targets:", targets);
+        senders.message(window.zap_global,content,targets);
     }
 };
 

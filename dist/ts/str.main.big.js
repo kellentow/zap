@@ -15,7 +15,7 @@
   var settings_button = document.getElementById("settings_button");
 
   // src/crypto.ts
-  var crypto_session = class {
+  var crypto_session = class _crypto_session {
     static version = 1;
     id;
     other_key;
@@ -32,6 +32,30 @@
     async decrypt(ciphertext) {
       const decrypted = await window.crypto.subtle.decrypt({ name: "RSA-OAEP" }, this.self_keys.privateKey, ciphertext);
       return new TextDecoder().decode(decrypted);
+    }
+    async serialize() {
+      return {
+        version: _crypto_session.version,
+        id: this.id,
+        other_key: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("spki", this.other_key)))),
+        self_keys: {
+          publicKey: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("spki", this.self_keys.publicKey)))),
+          privateKey: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("pkcs8", this.self_keys.privateKey))))
+        }
+      };
+    }
+    static async deserialize(data) {
+      if (data.version !== _crypto_session.version) {
+        throw new Error("Incompatible crypto_session version");
+      }
+      let other_key_buffer = Uint8Array.from(atob(data.other_key), (c) => c.charCodeAt(0));
+      let other_key = await window.crypto.subtle.importKey("spki", other_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
+      let self_public_key_buffer = Uint8Array.from(atob(data.self_keys.publicKey), (c) => c.charCodeAt(0));
+      let self_private_key_buffer = Uint8Array.from(atob(data.self_keys.privateKey), (c) => c.charCodeAt(0));
+      let self_public_key = await window.crypto.subtle.importKey("spki", self_public_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
+      let self_private_key = await window.crypto.subtle.importKey("pkcs8", self_private_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["decrypt"]);
+      let self_keys = { publicKey: self_public_key, privateKey: self_private_key };
+      return new _crypto_session(data.id, other_key, self_keys);
     }
   };
   async function makeKeys() {
@@ -83,14 +107,45 @@
       const decrypted = await window.crypto.subtle.decrypt({ name: "RSA-OAEP" }, this.self_keys.privateKey, ciphertext);
       return new TextDecoder().decode(decrypted);
     }
+    async serialize() {
+      let sessions_serialized = {};
+      for (let [id2, session] of Object.entries(this.sessions)) {
+        sessions_serialized[id2] = session.serialize();
+      }
+      return {
+        version: _crypto_manager.version,
+        self_keys: {
+          publicKey: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("spki", this.self_keys.publicKey)))),
+          privateKey: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("pkcs8", this.self_keys.privateKey))))
+        },
+        sessions: sessions_serialized
+      };
+    }
+    static async deserialize(data) {
+      if (data.version !== _crypto_manager.version) {
+        throw new Error("Incompatible crypto_manager version");
+      }
+      let self_public_key_buffer = Uint8Array.from(atob(data.self_keys.publicKey), (c) => c.charCodeAt(0));
+      let self_private_key_buffer = Uint8Array.from(atob(data.self_keys.privateKey), (c) => c.charCodeAt(0));
+      let self_public_key = await window.crypto.subtle.importKey("spki", self_public_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
+      let self_private_key = await window.crypto.subtle.importKey("pkcs8", self_private_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["decrypt"]);
+      let self_keys = { publicKey: self_public_key, privateKey: self_private_key };
+      let manager = new _crypto_manager(self_keys);
+      for (let [id2, session_data] of Object.entries(data.sessions)) {
+        manager.sessions[id2] = await crypto_session.deserialize(session_data);
+      }
+      return manager;
+    }
   };
 
   // src/helpers.ts
+  var encrytion_enabled = true;
+  var encrytion_ready = false;
   var session_crypto = null;
   crypto_manager.init().then((manager) => {
     session_crypto = manager;
+    encrytion_ready = true;
   });
-  var encrytion_enabled = true;
   function sendNotification(title, message) {
     if (document.hidden && Notification.permission === "granted") {
       new Notification(title, { body: message });
@@ -123,9 +178,9 @@
   }
   function lbsend(a, b, c, d, encrypt = void 0, encryption_sessions = []) {
     if (typeof encrypt == "undefined") {
-      encrypt = encrytion_enabled;
+      encrypt = true;
     }
-    if (encrypt) {
+    if (encrypt && encrytion_ready) {
       let messages = [];
       encryption_sessions.forEach((session) => {
         let enc_a = session.encrypt(JSON.stringify(a));
@@ -133,7 +188,11 @@
         let enc_c = session.encrypt(JSON.stringify(c));
         let enc_d = session.encrypt(JSON.stringify(d));
         Promise.all([enc_a, enc_b, enc_c, enc_d]).then(([a2, b2, c2, d2]) => {
-          messages.push([a2, b2, c2, d2, session.id]);
+          let str_a = arrayBufferToBase64(a2);
+          let str_b = arrayBufferToBase64(b2);
+          let str_c = arrayBufferToBase64(c2);
+          let str_d = arrayBufferToBase64(d2);
+          messages.push([str_a, str_b, str_c, str_d, session.id]);
         });
       });
       lbsend(messages, null, null, null, false);
@@ -175,6 +234,23 @@
       request2.onerror = () => reject(request2.error);
     });
   }
+  function base64ToArrayBuffer(base64) {
+    let binary = atob(base64);
+    let len = binary.length;
+    let bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+  function arrayBufferToBase64(buffer) {
+    let bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
   var senders = {
     message: function(global, text, recipients) {
       if (typeof text !== "string") {
@@ -187,7 +263,7 @@
       let time = Date.now();
       let message_id = `${global.room}/"${crypto.randomUUID()}-${crypto.randomUUID()}`;
       let recipients_sessions = encrytion_enabled && recipients ? recipients.map((r) => session_crypto.get_session(r)).filter((s) => s) : [];
-      lbsend(0, JSON.stringify(global.account), [time, text, message_id], global.room, void 0, recipients_sessions);
+      lbsend(0, JSON.stringify(global.account), [time, text, message_id], global.room, encrytion_enabled, recipients_sessions);
     },
     ping: function(global, recipients) {
       let recipients_sessions = encrytion_enabled && recipients ? recipients.map((r) => session_crypto.get_session(r)).filter((s) => s) : [];
@@ -207,9 +283,13 @@
       senders.crypto(global, { type: "KEYrequest", id: global.account.id });
     },
     crypto_response: function(global) {
-      window.crypto.subtle.exportKey("spki", session_crypto.self_keys.publicKey).then((exported) => {
-        senders.crypto(global, { type: "KEYresponse", id: global.account.id, public: btoa(String.fromCharCode(...new Uint8Array(exported))) });
-      });
+      if (encrytion_ready && typeof global.account != "undefined") {
+        window.crypto.subtle.exportKey("spki", session_crypto.self_keys.publicKey).then((exported) => {
+          senders.crypto(global, { type: "KEYresponse", id: global.account.id, public: arrayBufferToBase64(exported) });
+        });
+      } else {
+        setTimeout(senders.crypto_response, 100, [global]);
+      }
     },
     base: function(global, a, b, c, d) {
       window.send(a, b, c, d);
@@ -283,10 +363,8 @@
         console.warn("Some features may not work as expected and may cause glitches.");
       }
       if (content.type == "KEYrequest") {
-        console.log("Received key request from", account.id);
         senders.crypto_response(global, account);
       } else if (content.type == "KEYresponse") {
-        console.log("Received key response from", account.id, content);
         if (content.public && content.public != "E2EE DENIED") {
           let session = session_crypto.add_session(account.id, content.public);
         } else {
@@ -298,19 +376,23 @@
     },
     all: async function(global, type, stringed_account, content, room) {
       console.log("type:", type, "account:", stringed_account, "content:", content, "room:", room);
-      if (!stringed_account) {
+      if (stringed_account == null) {
+        type = type;
         for (let i = 0; i < type.length; i++) {
           let message = type[i];
+          console.log("message:", message);
+          console.log(message[4], global.account.id);
           if (message[4] == global.account.id) {
-            type = JSON.parse(await session_crypto.decrypt(message[0]));
-            stringed_account = JSON.parse(await session_crypto.decrypt(message[1]));
-            content = JSON.parse(await session_crypto.decrypt(message[2]));
-            room = JSON.parse(await session_crypto.decrypt(message[3]));
+            type = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[0])));
+            stringed_account = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[1])));
+            content = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[2])));
+            room = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[3])));
             console.log("Decrypted message:", { type, stringed_account, content, room });
-            break;
+            return await recievers.all(global, type, stringed_account, content, room);
           }
         }
-        if (!stringed_account) {
+        ;
+        if (room == null) {
           console.warn("No block for us in encrypted message, ignoring.");
           return;
         }
@@ -655,7 +737,8 @@
       let targets = window.zap_global.online[window.zap_global.room].map((ping) => {
         return ping.account.id;
       });
-      senders.message(content, targets);
+      console.log("Sending to targets:", targets);
+      senders.message(window.zap_global, content, targets);
     }
   };
   server_adder.onclick = function() {

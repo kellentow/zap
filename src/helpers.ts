@@ -2,12 +2,13 @@ import { Account, Message, zapGlobals } from "./main.d";
 import { msg_container } from "./elements";
 import { crypto_manager, crypto_session } from "./crypto";
 
+let encrytion_enabled = true;
+let encrytion_ready = false;
 let session_crypto: crypto_manager = null
 crypto_manager.init().then((manager) => {
     session_crypto = manager
+    encrytion_ready = true;
 });
-
-let encrytion_enabled = true;
 
 function sendNotification(title: string, message: string) {
     // Only send if page is hidden and notifications are allowed
@@ -46,9 +47,9 @@ if (typeof window.send !== 'function') {
 
 function lbsend(a: any, b: any, c: any, d: any, encrypt: boolean = undefined, encryption_sessions: crypto_session[] = []) {
     if (typeof encrypt == "undefined") {
-        encrypt = encrytion_enabled
+        encrypt = true
     }
-    if (encrypt) {
+    if (encrypt && encrytion_ready) {
         let messages: any[][] = []
         encryption_sessions.forEach((session) => {
             let enc_a = session.encrypt(JSON.stringify(a));
@@ -56,7 +57,11 @@ function lbsend(a: any, b: any, c: any, d: any, encrypt: boolean = undefined, en
             let enc_c = session.encrypt(JSON.stringify(c));
             let enc_d = session.encrypt(JSON.stringify(d));
             Promise.all([enc_a, enc_b, enc_c, enc_d]).then(([a, b, c, d]) => {
-                messages.push([a, b, c, d, session.id])
+                let str_a = arrayBufferToBase64(a)
+                let str_b = arrayBufferToBase64(b)
+                let str_c = arrayBufferToBase64(c)
+                let str_d = arrayBufferToBase64(d)
+                messages.push([str_a, str_b, str_c, str_d, session.id])
             })
         })
         lbsend(messages, null, null, null, false)
@@ -112,6 +117,25 @@ function load_db<T>(db: IDBDatabase, table: string): Promise<T[]> {
     });
 }
 
+function base64ToArrayBuffer(base64: string) {
+    let binary = atob(base64);
+    let len = binary.length;
+    let bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+    let bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+}
+
 let senders: {
     message: Function, ping: Function, join: Function
     crypto: Function, crypto_request: Function, crypto_response: Function,
@@ -128,7 +152,7 @@ let senders: {
         let time = Date.now();
         let message_id = `${global.room}/"${crypto.randomUUID()}-${crypto.randomUUID()}`
         let recipients_sessions: crypto_session[] = (encrytion_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
-        lbsend(0, JSON.stringify(global.account), [time, text, message_id], global.room, undefined, recipients_sessions);
+        lbsend(0, JSON.stringify(global.account), [time, text, message_id], global.room, encrytion_enabled, recipients_sessions);
     },
     ping: function (global: zapGlobals, recipients?: string[]) { // Send a ping
         let recipients_sessions: crypto_session[] = (encrytion_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
@@ -148,9 +172,13 @@ let senders: {
         senders.crypto(global, { type: "KEYrequest", id: global.account.id });
     },
     crypto_response: function (global: zapGlobals) { // Send your public key
-        window.crypto.subtle.exportKey("spki", session_crypto.self_keys.publicKey).then((exported) => {
-            senders.crypto(global, { type: "KEYresponse", id: global.account.id, public: btoa(String.fromCharCode(...new Uint8Array(exported))) }); // add stringified public key here
-        });
+        if (encrytion_ready && typeof global.account != "undefined") {
+            window.crypto.subtle.exportKey("spki", session_crypto.self_keys.publicKey).then((exported) => {
+                senders.crypto(global, { type: "KEYresponse", id: global.account.id, public: arrayBufferToBase64(exported) });
+            });
+        } else {
+            setTimeout(senders.crypto_response, 100, [global])
+        }
     },
     base: function (global: zapGlobals, a: any, b: any, c: any, d: any) { window.send(a, b, c, d) },
     bind: function (global: zapGlobals) {
@@ -228,10 +256,8 @@ let recievers: {
         }
 
         if (content.type == "KEYrequest") {
-            console.log("Received key request from", account.id);
             senders.crypto_response(global, account);
         } else if (content.type == "KEYresponse") {
-            console.log("Received key response from", account.id, content);
             if (content.public && content.public != "E2EE DENIED") {
                 let session = session_crypto.add_session(account.id, content.public);
             } else {
@@ -241,21 +267,25 @@ let recievers: {
             console.warn("Unknown crypto message type:", content);
         }
     },
-    all: async function (global: zapGlobals, type: number | any[], stringed_account?: string, content?: any, room?: string) {
+    all: async function (global: zapGlobals, type: number | any[][], stringed_account?: string, content?: any, room?: string) {
         console.log("type:", type, "account:", stringed_account, "content:", content, "room:", room)
-        if (!stringed_account) { // Encrypted message, find our block
-            for (let i = 0; i < (type as any[]).length; i++) {
-                let message = (type as any[])[i]
+        if (stringed_account == null) { // Encrypted message, find our block
+            type = (type as [string,string,string,string,string][])
+            for (let i=0;i<type.length;i++) {
+                let message = type[i]
+                console.log("message:", message)
+                console.log(message[4], global.account.id)
                 if (message[4] == global.account.id) {
-                    type = JSON.parse(await session_crypto.decrypt(message[0]))
-                    stringed_account = JSON.parse(await session_crypto.decrypt(message[1]))
-                    content = JSON.parse(await session_crypto.decrypt(message[2]))
-                    room = JSON.parse(await session_crypto.decrypt(message[3]))
+                    type = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[0])))
+                    stringed_account = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[1])))
+                    content = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[2])))
+                    room = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[3])))
+
                     console.log("Decrypted message:", { type, stringed_account, content, room })
-                    break;
+                    return await recievers.all(global,type,stringed_account,content,room);
                 }
-            }
-            if (!stringed_account) {
+            };
+            if (room == null) {
                 console.warn("No block for us in encrypted message, ignoring.");
                 return;
             }

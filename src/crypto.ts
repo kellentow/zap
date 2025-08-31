@@ -19,6 +19,32 @@ class crypto_session {
         const decrypted = await window.crypto.subtle.decrypt({ name: "RSA-OAEP" }, this.self_keys.privateKey, ciphertext);
         return new TextDecoder().decode(decrypted);
     }
+
+    async serialize() {
+        return {
+            version: crypto_session.version,
+            id: this.id,
+            other_key: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("spki", this.other_key)))),
+            self_keys: {
+                publicKey: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("spki", this.self_keys.publicKey)))),
+                privateKey: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("pkcs8", this.self_keys.privateKey))))
+            }
+        };
+    }
+
+    static async deserialize(data:any) {
+        if (data.version !== crypto_session.version) {
+            throw new Error("Incompatible crypto_session version");
+        }
+        let other_key_buffer = Uint8Array.from(atob(data.other_key), c => c.charCodeAt(0));
+        let other_key = await window.crypto.subtle.importKey("spki", other_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
+        let self_public_key_buffer = Uint8Array.from(atob(data.self_keys.publicKey), c => c.charCodeAt(0));
+        let self_private_key_buffer = Uint8Array.from(atob(data.self_keys.privateKey), c => c.charCodeAt(0));
+        let self_public_key = await window.crypto.subtle.importKey("spki", self_public_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
+        let self_private_key = await window.crypto.subtle.importKey("pkcs8", self_private_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["decrypt"]);
+        let self_keys = { publicKey: self_public_key, privateKey: self_private_key };
+        return new crypto_session(data.id, other_key, self_keys);
+    }
 }
 
 async function makeKeys() {
@@ -75,6 +101,37 @@ class crypto_manager {
     async decrypt(ciphertext: ArrayBuffer): Promise<string> { //only here because can decrypt sessionless, encryption requires session
         const decrypted = await window.crypto.subtle.decrypt({ name: "RSA-OAEP" }, this.self_keys.privateKey, ciphertext);
         return new TextDecoder().decode(decrypted);
+    }
+
+    async serialize() {
+        let sessions_serialized: {[key:string]: any} = {};
+        for (let [id, session] of Object.entries(this.sessions)) {
+            sessions_serialized[id] = session.serialize();
+        }
+        return {
+            version: crypto_manager.version,
+            self_keys: {
+                publicKey: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("spki", this.self_keys.publicKey)))),
+                privateKey: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("pkcs8", this.self_keys.privateKey))))
+            },
+            sessions: sessions_serialized
+        };
+    }
+
+    static async deserialize(data:any) {
+        if (data.version !== crypto_manager.version) {
+            throw new Error("Incompatible crypto_manager version");
+        }
+        let self_public_key_buffer = Uint8Array.from(atob(data.self_keys.publicKey), c => c.charCodeAt(0));
+        let self_private_key_buffer = Uint8Array.from(atob(data.self_keys.privateKey), c => c.charCodeAt(0));
+        let self_public_key = await window.crypto.subtle.importKey("spki", self_public_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
+        let self_private_key = await window.crypto.subtle.importKey("pkcs8", self_private_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["decrypt"]);
+        let self_keys = { publicKey: self_public_key, privateKey: self_private_key };
+        let manager = new crypto_manager(self_keys);
+        for (let [id, session_data] of Object.entries(data.sessions)) {
+            manager.sessions[id] = await crypto_session.deserialize(session_data);
+        }
+        return manager;
     }
 }
 
