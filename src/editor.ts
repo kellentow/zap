@@ -10,6 +10,7 @@ class Editor {
         this.theme = theme
 
         let modifier_bar = document.createElement("div")
+        modifier_bar.id = "mod_bar"
         modifier_bar.style.width = "100%"
         modifier_bar.style.height = "10%"
         modifier_bar.style.backgroundColor = theme == "light" ? "#f0f0f0" : "#2e2e2e"
@@ -18,38 +19,6 @@ class Editor {
         modifier_bar.style.padding = "0 10px"
         modifier_bar.style.boxSizing = "border-box"
         this.element.appendChild(modifier_bar)
-
-        let bold_button = document.createElement("button")
-        bold_button.innerHTML = "<b>B</b>"
-        bold_button.style.marginRight = "10px"
-        bold_button.onclick = () => {
-            document.execCommand("bold")
-        }
-        modifier_bar.appendChild(bold_button)
-
-        let italic_button = document.createElement("button")
-        italic_button.innerHTML = "<i>I</i>"
-        italic_button.style.marginRight = "10px"
-        italic_button.onclick = () => {
-            document.execCommand("italic")
-        }
-        modifier_bar.appendChild(italic_button)
-
-        let underline_button = document.createElement("button")
-        underline_button.innerHTML = "<u>U</u>"
-        underline_button.style.marginRight = "10px"
-        underline_button.onclick = () => {
-            document.execCommand("underline")
-        }
-        modifier_bar.appendChild(underline_button)
-
-        let strike_button = document.createElement("button")
-        strike_button.innerHTML = "<s>S</s>"
-        strike_button.style.marginRight = "10px"
-        strike_button.onclick = () => {
-            document.execCommand("strikeThrough")
-        }
-        modifier_bar.appendChild(strike_button)
 
         let file_picker = document.createElement("input")
         file_picker.type = "file"
@@ -69,11 +38,25 @@ class Editor {
         }
         modifier_bar.appendChild(file_picker)
 
-        let photo_button = document.createElement("button")
-        photo_button.innerHTML = "📷"
-        photo_button.style.marginRight = "10px"
-        photo_button.onclick = () => file_picker.click()
-        modifier_bar.appendChild(photo_button)
+        this.addButton("<b>B</b>", () => {
+            document.execCommand("bold")
+        })
+
+        this.addButton("<i>I</i>", () => {
+            document.execCommand("italic")
+        })
+
+        this.addButton("<u>U</u>", () => {
+            document.execCommand("underline")
+        })
+
+        this.addButton("<s>S</s>", () => {
+            document.execCommand("strikeThrough")
+        })
+
+        this.addButton("📷", () => {
+            file_picker.click()
+        })
 
         let text_input = document.createElement("div")
         text_input.contentEditable = "true"
@@ -89,6 +72,17 @@ class Editor {
         text_input.style.fontFamily = "Arial, sans-serif"
         text_input.style.fontSize = "14px"
         this.element.appendChild(text_input)
+    }
+
+    addButton(innerHTML:string,onclick:(this: HTMLButtonElement, ev: PointerEvent)=>any) {
+        let button = document.createElement("button")
+        button.innerHTML = innerHTML
+        button.style.background = this.theme == "light" ? "#EEE" : "#111"
+        button.style.color = this.theme == "light" ? "#111" : "#EEE"
+        button.style.marginRight = "10px"
+        button.addEventListener("click", onclick)
+        this.element.querySelector("#mod_bar").appendChild(button)
+        return button
     }
 
     getHTML () {

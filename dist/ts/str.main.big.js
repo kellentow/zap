@@ -156,7 +156,7 @@
       global.lastRenderedIndex = 0;
       msg_container.innerHTML = "";
       global.room = room;
-      console.log("Changed room to:", room);
+      console.debug("Changed room to:", room);
       global.messages[room] = global.messages[room] || [];
       global.servers.forEach(function(server) {
         let server_div = document.getElementById("server_" + server.id);
@@ -168,11 +168,9 @@
         element.classList.add("selected");
       }
       load_db(global.db, "messages").then((messages) => {
-        console.log(messages);
         let room_messages = messages.filter((a) => {
           return a.id && a.id.startsWith(global.room + "--");
         });
-        console.log(messages, room_messages);
         global.messages[global.room].push(...room_messages);
         global.messages[global.room].sort((a, b) => {
           return a.timestamp - b.timestamp;
@@ -243,7 +241,6 @@
     return new Promise((resolve, reject) => {
       const tx = db.transaction(table, "readwrite");
       const store = tx.objectStore(table);
-      console.log(key, value);
       const request2 = store.put(value, key);
       request2.onsuccess = () => resolve();
       request2.onerror = () => reject(request2.error);
@@ -304,11 +301,9 @@
       lbsend(255, JSON.stringify(global.account), message, global.room, false);
     },
     crypto_request: function(global) {
-      console.debug("Asking for keys");
       senders.crypto(global, { type: "KEYrequest", id: global.account.id });
     },
     crypto_response: function(global) {
-      console.debug("sending key");
       if (encrytion_ready && typeof global.account != "undefined") {
         window.crypto.subtle.exportKey("spki", session_crypto.self_keys.publicKey).then((exported) => {
           senders.crypto(global, { type: "KEYresponse", id: global.account.id, public: arrayBufferToBase64(exported) });
@@ -389,11 +384,9 @@
         console.warn("Some features may not work as expected and may cause glitches.");
       }
       if (content.type == "KEYrequest") {
-        console.debug("Got key request from " + account.id);
         senders.crypto_response(global, account);
       } else if (content.type == "KEYresponse") {
         if (content.public && content.public != "E2EE DENIED") {
-          console.debug("Got key from " + account.id);
           let session = session_crypto.add_session(account.id, content.public);
         } else {
           console.warn("User ".concat(account.id, " denied sending their public key."));
@@ -416,7 +409,7 @@
           }
         }
         ;
-        console.warn("No block for us in encrypted message, ignoring.");
+        console.debug("No block for us in encrypted message, ignoring.");
         return;
       }
       if (!global) {
@@ -616,6 +609,7 @@
       }
       this.theme = theme;
       let modifier_bar = document.createElement("div");
+      modifier_bar.id = "mod_bar";
       modifier_bar.style.width = "100%";
       modifier_bar.style.height = "10%";
       modifier_bar.style.backgroundColor = theme == "light" ? "#f0f0f0" : "#2e2e2e";
@@ -624,34 +618,6 @@
       modifier_bar.style.padding = "0 10px";
       modifier_bar.style.boxSizing = "border-box";
       this.element.appendChild(modifier_bar);
-      let bold_button = document.createElement("button");
-      bold_button.innerHTML = "<b>B</b>";
-      bold_button.style.marginRight = "10px";
-      bold_button.onclick = () => {
-        document.execCommand("bold");
-      };
-      modifier_bar.appendChild(bold_button);
-      let italic_button = document.createElement("button");
-      italic_button.innerHTML = "<i>I</i>";
-      italic_button.style.marginRight = "10px";
-      italic_button.onclick = () => {
-        document.execCommand("italic");
-      };
-      modifier_bar.appendChild(italic_button);
-      let underline_button = document.createElement("button");
-      underline_button.innerHTML = "<u>U</u>";
-      underline_button.style.marginRight = "10px";
-      underline_button.onclick = () => {
-        document.execCommand("underline");
-      };
-      modifier_bar.appendChild(underline_button);
-      let strike_button = document.createElement("button");
-      strike_button.innerHTML = "<s>S</s>";
-      strike_button.style.marginRight = "10px";
-      strike_button.onclick = () => {
-        document.execCommand("strikeThrough");
-      };
-      modifier_bar.appendChild(strike_button);
       let file_picker = document.createElement("input");
       file_picker.type = "file";
       file_picker.accept = "image/*";
@@ -669,11 +635,21 @@
         reader.readAsDataURL(file);
       };
       modifier_bar.appendChild(file_picker);
-      let photo_button = document.createElement("button");
-      photo_button.innerHTML = "\u{1F4F7}";
-      photo_button.style.marginRight = "10px";
-      photo_button.onclick = () => file_picker.click();
-      modifier_bar.appendChild(photo_button);
+      this.addButton("<b>B</b>", () => {
+        document.execCommand("bold");
+      });
+      this.addButton("<i>I</i>", () => {
+        document.execCommand("italic");
+      });
+      this.addButton("<u>U</u>", () => {
+        document.execCommand("underline");
+      });
+      this.addButton("<s>S</s>", () => {
+        document.execCommand("strikeThrough");
+      });
+      this.addButton("\u{1F4F7}", () => {
+        file_picker.click();
+      });
       let text_input = document.createElement("div");
       text_input.contentEditable = "true";
       text_input.id = "textinput";
@@ -688,6 +664,16 @@
       text_input.style.fontFamily = "Arial, sans-serif";
       text_input.style.fontSize = "14px";
       this.element.appendChild(text_input);
+    }
+    addButton(innerHTML, onclick) {
+      let button = document.createElement("button");
+      button.innerHTML = innerHTML;
+      button.style.background = this.theme == "light" ? "#EEE" : "#111";
+      button.style.color = this.theme == "light" ? "#111" : "#EEE";
+      button.style.marginRight = "10px";
+      button.addEventListener("click", onclick);
+      this.element.querySelector("#mod_bar").appendChild(button);
+      return button;
     }
     getHTML() {
       return this.element.querySelector("#textinput").innerHTML;
