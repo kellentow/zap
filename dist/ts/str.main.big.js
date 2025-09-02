@@ -167,7 +167,27 @@
       if (element) {
         element.classList.add("selected");
       }
+      load_db(global.db, "messages").then((messages) => {
+        console.log(messages);
+        let room_messages = messages.filter((a) => {
+          return a.id && a.id.startsWith(global.room + "--");
+        });
+        console.log(messages, room_messages);
+        global.messages[global.room].push(...room_messages);
+        global.messages[global.room].sort((a, b) => {
+          return a.timestamp - b.timestamp;
+        });
+        global.reTick = true;
+      });
       global.reTick = true;
+      let send_join = function() {
+        if (!encrytion_ready) {
+          return setTimeout(send_join, 10);
+        }
+        senders.join(global);
+        senders.crypto_request(global);
+      };
+      send_join();
     };
   }
   if (typeof window.send !== "function") {
@@ -182,12 +202,12 @@
     }
     if (encrypt && encrytion_ready) {
       let messages = [];
-      encryption_sessions.forEach((session) => {
+      let allPromises = encryption_sessions.map((session) => {
         let enc_a = session.encrypt(JSON.stringify(a));
         let enc_b = session.encrypt(JSON.stringify(b));
         let enc_c = session.encrypt(JSON.stringify(c));
         let enc_d = session.encrypt(JSON.stringify(d));
-        Promise.all([enc_a, enc_b, enc_c, enc_d]).then(([a2, b2, c2, d2]) => {
+        return Promise.all([enc_a, enc_b, enc_c, enc_d]).then(([a2, b2, c2, d2]) => {
           let str_a = arrayBufferToBase64(a2);
           let str_b = arrayBufferToBase64(b2);
           let str_c = arrayBufferToBase64(c2);
@@ -195,7 +215,10 @@
           messages.push([str_a, str_b, str_c, str_d, session.id]);
         });
       });
-      lbsend(messages, null, null, null, false);
+      Promise.all(allPromises).then(() => {
+        let str_msgs = JSON.stringify(messages);
+        lbsend(str_msgs, null, null, null, false);
+      });
     } else {
       window.send(a, b, c, d);
       window.get(a, b, c, d);
@@ -216,10 +239,11 @@
     }
     return Default;
   }
-  function save_db_key(db, table, key, value) {
+  function save_db_key(db, table, value, key) {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(table, "readwrite");
       const store = tx.objectStore(table);
+      console.log(key, value);
       const request2 = store.put(value, key);
       request2.onsuccess = () => resolve();
       request2.onerror = () => reject(request2.error);
@@ -261,7 +285,7 @@
         return;
       }
       let time = Date.now();
-      let message_id = `${global.room}/"${crypto.randomUUID()}-${crypto.randomUUID()}`;
+      let message_id = `${global.room}--${crypto.randomUUID()}-${crypto.randomUUID()}`;
       let recipients_sessions = encrytion_enabled && recipients ? recipients.map((r) => session_crypto.get_session(r)).filter((s) => s) : [];
       lbsend(0, JSON.stringify(global.account), [time, text, message_id], global.room, encrytion_enabled, recipients_sessions);
     },
@@ -280,9 +304,11 @@
       lbsend(255, JSON.stringify(global.account), message, global.room, false);
     },
     crypto_request: function(global) {
+      console.debug("Asking for keys");
       senders.crypto(global, { type: "KEYrequest", id: global.account.id });
     },
     crypto_response: function(global) {
+      console.debug("sending key");
       if (encrytion_ready && typeof global.account != "undefined") {
         window.crypto.subtle.exportKey("spki", session_crypto.self_keys.publicKey).then((exported) => {
           senders.crypto(global, { type: "KEYresponse", id: global.account.id, public: arrayBufferToBase64(exported) });
@@ -316,7 +342,7 @@
         id: id2
       };
       global.messages[room].push(new_message);
-      save_db_key(global.db, "messages", id2, new_message);
+      save_db_key(global.db, "messages", new_message);
     },
     ping: function(global, account, content, room) {
       if (!Object.prototype.hasOwnProperty.call(global.online, room)) {
@@ -363,9 +389,11 @@
         console.warn("Some features may not work as expected and may cause glitches.");
       }
       if (content.type == "KEYrequest") {
+        console.debug("Got key request from " + account.id);
         senders.crypto_response(global, account);
       } else if (content.type == "KEYresponse") {
         if (content.public && content.public != "E2EE DENIED") {
+          console.debug("Got key from " + account.id);
           let session = session_crypto.add_session(account.id, content.public);
         } else {
           console.warn("User ".concat(account.id, " denied sending their public key."));
@@ -375,27 +403,21 @@
       }
     },
     all: async function(global, type, stringed_account, content, room) {
-      console.log("type:", type, "account:", stringed_account, "content:", content, "room:", room);
       if (stringed_account == null) {
-        type = type;
-        for (let i = 0; i < type.length; i++) {
-          let message = type[i];
-          console.log("message:", message);
-          console.log(message[4], global.account.id);
+        let enc_msg = JSON.parse(type);
+        for (let i = 0; i < enc_msg.length; i++) {
+          let message = enc_msg[i];
           if (message[4] == global.account.id) {
             type = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[0])));
             stringed_account = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[1])));
             content = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[2])));
             room = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[3])));
-            console.log("Decrypted message:", { type, stringed_account, content, room });
             return await recievers.all(global, type, stringed_account, content, room);
           }
         }
         ;
-        if (room == null) {
-          console.warn("No block for us in encrypted message, ignoring.");
-          return;
-        }
+        console.warn("No block for us in encrypted message, ignoring.");
+        return;
       }
       if (!global) {
         return;
@@ -421,6 +443,7 @@
       } else {
         console.warn(`${type} is a unknown message type`);
       }
+      global.reTick = true;
     },
     bind: function(global) {
       let new_funcs = {};
@@ -495,13 +518,14 @@
       return;
     }
     const messages = global.messages[global.room] || [];
+    console.log(messages);
     const start = global.lastRenderedIndex;
     for (let i = start; i < Math.min(messages.length, start + 100); i++) {
       let msg = messages[i];
       try {
         let msg_div = document.createElement("div");
         msg_div.className = "msg";
-        msg_div.id = "msg_" + i;
+        msg_div.id = "msg_" + msg.id;
         msg_div.innerHTML = `<strong>${msg.account.name}</strong> 
             <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span><br>`;
         let container = document.createElement("div");
@@ -692,6 +716,15 @@
     editor: void 0,
     db: void 0
   };
+  var normalizeOps = function normalizeOps2(ops) {
+    const final = {};
+    for (let [name, opts] of ops) {
+      const op = name[0];
+      const store = name.slice(1);
+      final[store] = [op, opts];
+    }
+    return Object.entries(final).map(([store, [op, opts]]) => [op + store, opts]);
+  };
   var request = window.indexedDB.open("ZapMessengerRW", 1);
   request.onsuccess = function(e) {
     window.zap_global.db = request.result;
@@ -701,18 +734,37 @@
     let needed = [];
     switch (event.oldVersion) {
       case 0:
-        needed.push(["messages", { keyPath: "id", autoIncrement: true }]);
+        needed.push(["+ messages", { keyPath: "id", autoIncrement: true }]);
+      case 1:
+        needed.push(["-+ messages", { keyPath: "id", autoIncrement: false }]);
     }
-    needed.forEach(([name, options]) => {
-      if (!db.objectStoreNames.contains(name)) {
+    needed = normalizeOps(needed);
+    needed.forEach(([fullop, options]) => {
+      const [op, name] = fullop.split(" ", 2);
+      if (op === "+") {
+        if (!db.objectStoreNames.contains(name)) {
+          db.createObjectStore(name, options);
+        } else {
+          console.warn(`Cannot add ${name} because it already exists`);
+        }
+      } else if (op === "-") {
+        if (db.objectStoreNames.contains(name)) {
+          db.deleteObjectStore(name);
+        } else {
+          console.warn(`Cannot remove ${name} because it doesn't exist`);
+        }
+      } else if (op === "-+") {
+        if (db.objectStoreNames.contains(name)) {
+          db.deleteObjectStore(name);
+        }
         db.createObjectStore(name, options);
       }
     });
   };
-  var { onPing: onPing2, onTick: onTick2 } = bind(window.zap_global);
   if (!window.zap_global.account.name) {
     promptForAccount();
   }
+  var { onPing: onPing2, onTick: onTick2 } = bind(window.zap_global);
   if (Notification.permission === "default") {
     Notification.requestPermission();
   }
@@ -792,24 +844,20 @@
   dark_toggle.appendChild(dark_img);
   settings_menu.appendChild(dark_toggle);
   function onLoad() {
-    load_db(window.zap_global.db, "messages").then((messages) => {
-      let room_messages = messages.filter((a) => {
-        a.id && a.id.startsWith(window.zap_global.room + "/");
-      });
-      window.zap_global.messages[window.zap_global.room] = room_messages;
-    });
     dark_toggle.click();
     setInterval(onTick2, 250);
+    let temp = document.createElement("div");
+    change_room_binder(window.zap_global, "1", temp)();
+    temp.remove();
   }
   document.title = "Zap Messenger Rewritten";
   var id = setInterval((function() {
     if (document.readyState == "complete") {
       clearInterval(id);
       onLoad();
-      senders.join(window.zap_global);
-      senders.crypto_request(window.zap_global);
     }
   }), 100);
   setInterval(onPing2, 500);
   window.get = recievers.bind(window.zap_global).all;
 })();
+//# sourceMappingURL=main.big.js.map

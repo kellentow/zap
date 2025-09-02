@@ -22,7 +22,7 @@ function change_room_binder(global: zapGlobals, room: string, element: HTMLEleme
         global.lastRenderedIndex = 0; // Reset last rendered index when changing room
         msg_container.innerHTML = "";
         global.room = room;
-        console.log("Changed room to:", room);
+        console.debug("Changed room to:", room);
         // Optionally, clear the messages for the new room
         global.messages[room] = global.messages[room] || [];
         global.servers.forEach(function (server) {
@@ -34,7 +34,21 @@ function change_room_binder(global: zapGlobals, room: string, element: HTMLEleme
         if (element) {
             element.classList.add("selected");
         }
+        load_db(global.db,"messages").then((messages)=>{
+            let room_messages:Message[] = (messages.filter((a:Message)=>{return a.id && a.id.startsWith(global.room+"--")}) as Message[])
+            global.messages[global.room].push(...room_messages)
+            global.messages[global.room].sort((a,b)=>{return a.timestamp-b.timestamp})
+            global.reTick = true;
+        })
         global.reTick = true;
+        let send_join = function() {
+            if (!encrytion_ready) {
+                return setTimeout(send_join,10) // wait to send keys since don't have any yet
+            }
+            senders.join(global)
+            senders.crypto_request(global)
+        }
+        send_join()
     };
 }
 
@@ -51,20 +65,26 @@ function lbsend(a: any, b: any, c: any, d: any, encrypt: boolean = undefined, en
     }
     if (encrypt && encrytion_ready) {
         let messages: any[][] = []
-        encryption_sessions.forEach((session) => {
+
+        let allPromises = encryption_sessions.map((session) => {
             let enc_a = session.encrypt(JSON.stringify(a));
             let enc_b = session.encrypt(JSON.stringify(b));
             let enc_c = session.encrypt(JSON.stringify(c));
             let enc_d = session.encrypt(JSON.stringify(d));
-            Promise.all([enc_a, enc_b, enc_c, enc_d]).then(([a, b, c, d]) => {
-                let str_a = arrayBufferToBase64(a)
-                let str_b = arrayBufferToBase64(b)
-                let str_c = arrayBufferToBase64(c)
-                let str_d = arrayBufferToBase64(d)
-                messages.push([str_a, str_b, str_c, str_d, session.id])
-            })
-        })
-        lbsend(messages, null, null, null, false)
+            return Promise.all([enc_a, enc_b, enc_c, enc_d])
+                .then(([a, b, c, d]) => {
+                    let str_a = arrayBufferToBase64(a)
+                    let str_b = arrayBufferToBase64(b)
+                    let str_c = arrayBufferToBase64(c)
+                    let str_d = arrayBufferToBase64(d)
+                    messages.push([str_a, str_b, str_c, str_d, session.id])
+                });
+        });
+
+        Promise.all(allPromises).then(() => {
+            let str_msgs = JSON.stringify(messages)
+            lbsend(str_msgs, null, null, null, false)
+        });
     } else {
         window.send(a, b, c, d);
         window.get(a, b, c, d);
@@ -87,7 +107,7 @@ function load(key: string, Default: any) {
     }
     return Default;
 }
-function save_db_key(db: IDBDatabase, table: string, key: string, value: any): Promise<void> {
+function save_db_key(db: IDBDatabase, table: string, value: any, key?: string): Promise<void> {
     return new Promise((resolve, reject) => {
         const tx = db.transaction(table, "readwrite");
         const store = tx.objectStore(table);
@@ -117,6 +137,29 @@ function load_db<T>(db: IDBDatabase, table: string): Promise<T[]> {
     });
 }
 
+async function encryptArray(array: any[], session: crypto_session) {
+    array = array.map((item) => {
+        return session.encrypt(JSON.stringify(item));
+    });
+    array = await Promise.all(array);
+    array = array.map((item) => {
+        return arrayBufferToBase64(item);
+    });
+    return array;
+}
+
+async function decryptArray(array: any[]) {
+    array = array.map((item) => {
+        return base64ToArrayBuffer(item);
+    });
+    array = array.map((item) => {
+        return session_crypto.decrypt(item).then((decrypted) => {
+            return JSON.parse(decrypted);
+        });
+    });
+    return Promise.all(array);
+}
+
 function base64ToArrayBuffer(base64: string) {
     let binary = atob(base64);
     let len = binary.length;
@@ -139,7 +182,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 let senders: {
     message: Function, ping: Function, join: Function
     crypto: Function, crypto_request: Function, crypto_response: Function,
-    base: Function, bind: Function
+    base: Function, bind: Function 
 } = {
     message: function (global: zapGlobals, text: string, recipients?: string[]) { // Send a message
         if (typeof text !== "string") {
@@ -150,7 +193,7 @@ let senders: {
             return;
         }
         let time = Date.now();
-        let message_id = `${global.room}/"${crypto.randomUUID()}-${crypto.randomUUID()}`
+        let message_id = `${global.room}--${crypto.randomUUID()}-${crypto.randomUUID()}`
         let recipients_sessions: crypto_session[] = (encrytion_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
         lbsend(0, JSON.stringify(global.account), [time, text, message_id], global.room, encrytion_enabled, recipients_sessions);
     },
@@ -161,7 +204,7 @@ let senders: {
     join: function (global: zapGlobals) { // Send a join notif
         lbsend(2, JSON.stringify(global.account), Date.now(), global.room, false)
         senders.crypto_request(global)
-    },
+    }, 
     crypto: function (global: zapGlobals, message: any) { // crypto base
         if (typeof message !== "string") {
             message = JSON.stringify(message);
@@ -208,7 +251,7 @@ let recievers: {
             id
         }
         global.messages[room].push(new_message);
-        save_db_key(global.db, "messages", id, new_message);
+        save_db_key(global.db, "messages", new_message);
     },
     ping: function (global: zapGlobals, account: Account, content: number, room: string) {
         if (!Object.prototype.hasOwnProperty.call(global.online, room)) {
@@ -267,28 +310,23 @@ let recievers: {
             console.warn("Unknown crypto message type:", content);
         }
     },
-    all: async function (global: zapGlobals, type: number | any[][], stringed_account?: string, content?: any, room?: string) {
-        console.log("type:", type, "account:", stringed_account, "content:", content, "room:", room)
+    all: async function (global: zapGlobals, type: number | string, stringed_account?: string, content?: any, room?: string) {
         if (stringed_account == null) { // Encrypted message, find our block
-            type = (type as [string,string,string,string,string][])
-            for (let i=0;i<type.length;i++) {
-                let message = type[i]
-                console.log("message:", message)
-                console.log(message[4], global.account.id)
+            let enc_msg: string[][] = (JSON.parse((type as string)) as string[][])
+
+            for (let i = 0; i < (enc_msg.length); i++) {
+                let message = enc_msg[i]
                 if (message[4] == global.account.id) {
                     type = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[0])))
                     stringed_account = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[1])))
                     content = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[2])))
                     room = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[3])))
 
-                    console.log("Decrypted message:", { type, stringed_account, content, room })
-                    return await recievers.all(global,type,stringed_account,content,room);
+                    return await recievers.all(global, type, stringed_account, content, room);
                 }
             };
-            if (room == null) {
-                console.warn("No block for us in encrypted message, ignoring.");
-                return;
-            }
+            console.debug("No block for us in encrypted message, ignoring.");
+            return;
         }
 
         if (!global) {
@@ -308,6 +346,7 @@ let recievers: {
             if (type == 1) { recievers.ping(global, account, content, room) } else
                 if (type == 2) { recievers.join(global, account, content, room) } else
                     if (type == 255) { recievers.crypto(global, account, content, room) } else { console.warn(`${type} is a unknown message type`) }
+        global.reTick = true
     },
     bind: function (global: zapGlobals) {
         let new_funcs: any = {}

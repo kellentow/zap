@@ -34,8 +34,8 @@ if [[ "$NEW_HASH" != "$OLD_HASH" ]] || $flag_f; then
     rm -rf dist/ts/*
     tsc --noEmit
     echo "Building TS"
-    npx esbuild src/main.ts --bundle --outfile=dist/ts/main.js --minify
-    npx esbuild src/main.ts --bundle --outfile=dist/ts/main.big.js > /dev/null 2>&1
+    npx esbuild src/main.ts --bundle --outfile=dist/ts/main.js --minify --sourcemap
+    npx esbuild src/main.ts --bundle --outfile=dist/ts/main.big.js --sourcemap > /dev/null 2>&1
     find dist/ts -type f -exec bash -c '
   for f; do
     dir=$(dirname "$f")

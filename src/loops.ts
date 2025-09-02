@@ -47,13 +47,14 @@ function onTick(global: zapGlobals) {
     }
 
     const messages = global.messages[global.room] || [];
+    console.log(messages)
     const start = global.lastRenderedIndex
     for (let i = start; i < Math.min(messages.length, start + 100); i++) {
         let msg = messages[i];
         try {
             let msg_div = document.createElement("div");
             msg_div.className = "msg";
-            msg_div.id = "msg_" + i;
+            msg_div.id = "msg_" + msg.id;
             msg_div.innerHTML = `<strong>${msg.account.name}</strong> 
             <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span><br>`;
             let container = document.createElement('div');

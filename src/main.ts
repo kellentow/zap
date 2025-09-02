@@ -1,6 +1,6 @@
-import { save, load, senders, recievers, load_db } from './helpers'
+import { save, load, senders, recievers, change_room_binder } from './helpers'
 import { settings_menu, server_adder, msg_send, settings_button } from './elements'
-import { Message, zapGlobals } from './main.d'
+import { zapGlobals } from './main.d'
 import { bind } from './loops'
 import { Editor } from './editor'
 
@@ -24,6 +24,19 @@ window.zap_global = {
     editor: undefined,
     db: undefined
 };
+
+let normalizeOps = function normalizeOps(ops: [string, IDBObjectStoreParameters?][]) {
+    const final: Record<string, [string, IDBObjectStoreParameters?]> = {};
+
+    for (let [name, opts] of ops) {
+        const op = name[0];
+        const store = name.slice(1);
+        final[store] = [op, opts]; // later ops overwrite earlier ones
+    }
+
+    return Object.entries(final).map(([store, [op, opts]]) => [op + store, opts] as [string, IDBObjectStoreParameters?]);
+}
+
 let request = window.indexedDB.open("ZapMessengerRW", 1);
 request.onsuccess = function (e) {
     window.zap_global.db = request.result
@@ -34,21 +47,41 @@ request.onupgradeneeded = (event) => {
 
     switch (event.oldVersion) {
         case 0:
-            needed.push(["messages", { keyPath: "id", autoIncrement: true }]);
+            needed.push(["+ messages", { keyPath: "id", autoIncrement: true }]);
+        case 1:
+            needed.push(["-+ messages", { keyPath: "id", autoIncrement: false }]);
     }
 
-    needed.forEach(([name, options]) => {
-        if (!db.objectStoreNames.contains(name)) {
+    needed = normalizeOps(needed)
+
+    needed.forEach(([fullop, options]) => {
+        const [op, name] = fullop.split(" ", 2); // "op storeName"
+        if (op === "+") {
+            if (!db.objectStoreNames.contains(name)) {
+                db.createObjectStore(name, options);
+            } else {
+                console.warn(`Cannot add ${name} because it already exists`)
+            }
+        } else if (op === "-") {
+            if (db.objectStoreNames.contains(name)) {
+                db.deleteObjectStore(name);
+            } else {
+                console.warn(`Cannot remove ${name} because it doesn't exist`)
+            }
+        } else if (op === "-+") {
+            if (db.objectStoreNames.contains(name)) {
+                db.deleteObjectStore(name);
+            }
             db.createObjectStore(name, options);
         }
     });
 };
 
-let {onPing, onTick} = bind(window.zap_global)
-
 if (!window.zap_global.account.name) {
     promptForAccount();
 }
+
+let {onPing, onTick} = bind(window.zap_global)
 
 if (Notification.permission === "default") {
     Notification.requestPermission();
@@ -131,17 +164,16 @@ dark_toggle.onclick = function () {
 let dark_img = document.createElement("img");
 dark_img.src = "https://cdn-icons-png.flaticon.com/512/12377/12377255.png ";
 dark_img.style.height = "20px";
-dark_img.style.width = "20px";
+dark_img.style.width = "20px"; 
 dark_toggle.appendChild(dark_img);
 settings_menu.appendChild(dark_toggle);
 //#endregion 
 function onLoad() {
-    load_db(window.zap_global.db,"messages").then((messages)=>{
-        let room_messages:Message[] = (messages.filter((a:Message)=>{a.id && a.id.startsWith(window.zap_global.room+"/")}) as Message[])
-        window.zap_global.messages[window.zap_global.room] = room_messages
-    })
     dark_toggle.click(); // Set initial dark mode state
     setInterval(onTick, 250); // Start the animation frame loop
+    let temp = document.createElement("div")
+    change_room_binder(window.zap_global,"1",temp)()
+    temp.remove()
 }
 
 document.title = "Zap Messenger Rewritten"
@@ -149,8 +181,6 @@ let id = setInterval((function () {
     if (document.readyState == "complete") {
         clearInterval(id);
         onLoad();
-        senders.join(window.zap_global);
-        senders.crypto_request(window.zap_global);
     }
 }), 100);
 setInterval(onPing, 500);
