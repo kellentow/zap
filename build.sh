@@ -54,6 +54,11 @@ if [[ "$NEW_HASH" != "$OLD_HASH" ]] || $flag_f; then
     mv "dist/$latest_file" "dist/bundles/$latest_file"
     echo "Done!"
 
+    echo "Building electron (experimental)"
+
+    npx electron-forge make
+
+    
     # Save the new hash
     echo "$NEW_HASH" > "$HASH_FILE"
 else

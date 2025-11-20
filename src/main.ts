@@ -81,13 +81,13 @@ if (!window.zap_global.account.name) {
     promptForAccount();
 }
 
-let {onPing, onTick} = bind(window.zap_global)
+let {onPing, onTick, keyResend} = bind(window.zap_global)
 
 if (Notification.permission === "default") {
     Notification.requestPermission();
 }
 
-function promptForAccount() {
+async function promptForAccount() {
     let name = null;
     while (!name || name.trim().length === 0) {
         name = prompt("Enter your name to continue:");
@@ -112,7 +112,7 @@ msg_send.onclick = function () {
     }
 };
 
-server_adder.onclick = function () {
+server_adder.onclick = async function () {
     let server_name, server_id, server_img;
     while (!server_name) {
         server_name = prompt("Enter server name:");
@@ -184,4 +184,5 @@ let id = setInterval((function () {
     }
 }), 100);
 setInterval(onPing, 500);
+setInterval(keyResend, 30000)
 window.get = recievers.bind(window.zap_global).all

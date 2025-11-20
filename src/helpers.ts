@@ -17,6 +17,19 @@ function sendNotification(title: string, message: string) {
     }
 }
 
+let formatDate = function formatDate(date:Date) {
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    const monthName = months[date.getMonth()];
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+
+    return `${monthName} ${day} ${hours}:${minutes}:${seconds}`;
+}
+
 function change_room_binder(global: zapGlobals, room: string, element: HTMLElement) {
     return function () {
         global.lastRenderedIndex = 0; // Reset last rendered index when changing room
@@ -182,6 +195,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 let senders: {
     message: Function, ping: Function, join: Function
     crypto: Function, crypto_request: Function, crypto_response: Function,
+    request_history: Function, send_history: Function,
     base: Function, bind: Function 
 } = {
     message: function (global: zapGlobals, text: string, recipients?: string[]) { // Send a message
@@ -223,6 +237,16 @@ let senders: {
             setTimeout(senders.crypto_response, 100, [global])
         }
     },
+    request_history: function(global: zapGlobals, recipients?: string[]) {
+        let ids = global.messages[global.room].map(((v,i,a)=>{return v.id}))
+        let recipients_sessions: crypto_session[] = (encrytion_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
+        lbsend(3,global.account,ids,global.room, true, recipients_sessions)
+    },
+    send_history: function(global: zapGlobals, ids:string[], recipients?: string[]) {
+        let msgs = global.messages[global.room].map(((v,i,a)=>{return ids.indexOf(v.id) != -1 ? v: null}))
+        let recipients_sessions: crypto_session[] = (encrytion_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
+        lbsend(4,global.account,msgs,global.room, true, recipients_sessions)
+    },
     base: function (global: zapGlobals, a: any, b: any, c: any, d: any) { window.send(a, b, c, d) },
     bind: function (global: zapGlobals) {
         let new_sender: any = {}
@@ -238,6 +262,7 @@ let senders: {
 let recievers: {
     message: Function, ping: Function,
     crypto: Function, join: Function,
+    history_request: Function, recieve_history: Function,
     all: Function, bind: Function
 } = {
     message: function (global: zapGlobals, account: Account, content: [timestamp: number, message: string, id: string], room: string) {
@@ -310,6 +335,19 @@ let recievers: {
             console.warn("Unknown crypto message type:", content);
         }
     },
+    history_request: function (global: zapGlobals, account: Account, content: string[], room: string) {
+        let recievers = global.online[global.room].map(((v,i,a)=>{return v.account.id}))
+        senders.send_history(global,content,recievers)
+    }, 
+    recieve_history: function (global: zapGlobals, account: Account, content: Message[], room: string) {
+        let ids: string[] = global.messages[global.room].map(((v,i,a)=> {return v.id}))
+        for (let i = 0; i<content.length; i++) {
+            let msg = content[i]
+            if (ids.indexOf(msg.id) == -1) {
+                global.messages[room].push(msg)
+            }
+        }
+    },
     all: async function (global: zapGlobals, type: number | string, stringed_account?: string, content?: any, room?: string) {
         if (stringed_account == null) { // Encrypted message, find our block
             let enc_msg: string[][] = (JSON.parse((type as string)) as string[][])
@@ -345,7 +383,9 @@ let recievers: {
         if (type == 0) { recievers.message(global, account, content, room) } else
             if (type == 1) { recievers.ping(global, account, content, room) } else
                 if (type == 2) { recievers.join(global, account, content, room) } else
-                    if (type == 255) { recievers.crypto(global, account, content, room) } else { console.warn(`${type} is a unknown message type`) }
+                    if (type == 3) { recievers.history_request(global, account, content, room) } else
+                        if (type == 4) { recievers.recieve_history(global, account, content, room) } else
+                            if (type == 255) { recievers.crypto(global, account, content, room) } else { console.warn(`${type} is a unknown message type`) }
         global.reTick = true
     },
     bind: function (global: zapGlobals) {
@@ -359,4 +399,4 @@ let recievers: {
     }
 }
 
-export { save, load, save_db_key, load_db, load_db_key, senders, recievers, sendNotification, change_room_binder }
+export { save, load, save_db_key, load_db, load_db_key, senders, recievers, sendNotification, change_room_binder, formatDate}

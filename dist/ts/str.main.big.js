@@ -151,6 +151,28 @@
       new Notification(title, { body: message });
     }
   }
+  var formatDate = function formatDate2(date) {
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec"
+    ];
+    const monthName = months[date.getMonth()];
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    return `${monthName} ${day} ${hours}:${minutes}:${seconds}`;
+  };
   function change_room_binder(global, room, element) {
     return function() {
       global.lastRenderedIndex = 0;
@@ -312,6 +334,20 @@
         setTimeout(senders.crypto_response, 100, [global]);
       }
     },
+    request_history: function(global, recipients) {
+      let ids = global.messages[global.room].map(((v, i, a) => {
+        return v.id;
+      }));
+      let recipients_sessions = encrytion_enabled && recipients ? recipients.map((r) => session_crypto.get_session(r)).filter((s) => s) : [];
+      lbsend(3, global.account, ids, global.room, true, recipients_sessions);
+    },
+    send_history: function(global, ids, recipients) {
+      let msgs = global.messages[global.room].map(((v, i, a) => {
+        return ids.indexOf(v.id) != -1 ? v : null;
+      }));
+      let recipients_sessions = encrytion_enabled && recipients ? recipients.map((r) => session_crypto.get_session(r)).filter((s) => s) : [];
+      lbsend(4, global.account, msgs, global.room, true, recipients_sessions);
+    },
     base: function(global, a, b, c, d) {
       window.send(a, b, c, d);
     },
@@ -395,6 +431,23 @@
         console.warn("Unknown crypto message type:", content);
       }
     },
+    history_request: function(global, account, content, room) {
+      let recievers2 = global.online[global.room].map(((v, i, a) => {
+        return v.account.id;
+      }));
+      senders.send_history(global, content, recievers2);
+    },
+    recieve_history: function(global, account, content, room) {
+      let ids = global.messages[global.room].map(((v, i, a) => {
+        return v.id;
+      }));
+      for (let i = 0; i < content.length; i++) {
+        let msg = content[i];
+        if (ids.indexOf(msg.id) == -1) {
+          global.messages[room].push(msg);
+        }
+      }
+    },
     all: async function(global, type, stringed_account, content, room) {
       if (stringed_account == null) {
         let enc_msg = JSON.parse(type);
@@ -431,6 +484,10 @@
         recievers.ping(global, account, content, room);
       } else if (type == 2) {
         recievers.join(global, account, content, room);
+      } else if (type == 3) {
+        recievers.history_request(global, account, content, room);
+      } else if (type == 4) {
+        recievers.recieve_history(global, account, content, room);
       } else if (type == 255) {
         recievers.crypto(global, account, content, room);
       } else {
@@ -520,7 +577,7 @@
         msg_div.className = "msg";
         msg_div.id = "msg_" + msg.id;
         msg_div.innerHTML = `<strong>${msg.account.name}</strong> 
-            <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span><br>`;
+            <span class="timestamp">${formatDate(new Date(msg.timestamp))}</span><br>`;
         let container = document.createElement("div");
         container.innerHTML = msg.content;
         msg_div.appendChild(container);
@@ -586,6 +643,9 @@
       }
     });
   }
+  function keyResend(global) {
+    senders.crypto_response(global);
+  }
   function bind(global) {
     let new_funcs = {};
     new_funcs.onTick = function() {
@@ -593,6 +653,9 @@
     };
     new_funcs.onPing = function() {
       onPing(global);
+    };
+    new_funcs.keyResend = function() {
+      keyResend(global);
     };
     return new_funcs;
   }
@@ -750,11 +813,11 @@
   if (!window.zap_global.account.name) {
     promptForAccount();
   }
-  var { onPing: onPing2, onTick: onTick2 } = bind(window.zap_global);
+  var { onPing: onPing2, onTick: onTick2, keyResend: keyResend2 } = bind(window.zap_global);
   if (Notification.permission === "default") {
     Notification.requestPermission();
   }
-  function promptForAccount() {
+  async function promptForAccount() {
     let name = null;
     while (!name || name.trim().length === 0) {
       name = prompt("Enter your name to continue:");
@@ -779,7 +842,7 @@
       senders.message(window.zap_global, content, targets);
     }
   };
-  server_adder.onclick = function() {
+  server_adder.onclick = async function() {
     let server_name, server_id, server_img;
     while (!server_name) {
       server_name = prompt("Enter server name:");
@@ -844,6 +907,7 @@
     }
   }), 100);
   setInterval(onPing2, 500);
+  setInterval(keyResend2, 3e4);
   window.get = recievers.bind(window.zap_global).all;
 })();
 //# sourceMappingURL=main.big.js.map

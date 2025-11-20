@@ -1,4 +1,4 @@
-import { senders } from './helpers'
+import { senders, formatDate} from './helpers'
 import { online_bar, div, msg_container, servers_div, chat_div } from './elements'
 import { zapGlobals, Server } from './main.d'
 import { change_room_binder, save } from './helpers'
@@ -56,7 +56,7 @@ function onTick(global: zapGlobals) {
             msg_div.className = "msg";
             msg_div.id = "msg_" + msg.id;
             msg_div.innerHTML = `<strong>${msg.account.name}</strong> 
-            <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span><br>`;
+            <span class="timestamp">${formatDate(new Date(msg.timestamp))}</span><br>`;
             let container = document.createElement('div');
             container.innerHTML = msg.content;
             msg_div.appendChild(container)
@@ -124,11 +124,16 @@ function onTick(global: zapGlobals) {
     });
 }
 
+function keyResend(global: zapGlobals) {
+    senders.crypto_response(global)
+}
+
 function bind(global: zapGlobals) {
     let new_funcs: any = {}
     new_funcs.onTick = function () { onTick(global) }
     new_funcs.onPing = function () { onPing(global) }
+    new_funcs.keyResend = function () { keyResend(global) }
     return new_funcs
 }
 
-export { onPing, onTick, bind }
+export { onPing, onTick, keyResend, bind }

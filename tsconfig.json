@@ -12,5 +12,5 @@
       "@t/*": ["node_modules/@toast-ui/editor/types/*"]
     }
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "electron/main.cjs"]
 }
