@@ -146,9 +146,11 @@ dark_toggle.onclick = function () {
     save("dark", window.zap_global.dark);
     if (window.zap_global.dark) {
         document.documentElement.classList.add("dark");
+        document.documentElement.classList.remove("light");
     }
     else {
         document.documentElement.classList.remove("dark");
+        document.documentElement.classList.add("light");
     }
     let md = "";
     if (window.zap_global.editor) {

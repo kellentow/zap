@@ -13,7 +13,7 @@ class Editor {
         modifier_bar.id = "mod_bar"
         modifier_bar.style.width = "100%"
         modifier_bar.style.height = "10%"
-        modifier_bar.style.backgroundColor = theme == "light" ? "#f0f0f0" : "#2e2e2e"
+        modifier_bar.style.backgroundColor = "var(--palette-4)"
         modifier_bar.style.display = "flex"
         modifier_bar.style.alignItems = "center"
         modifier_bar.style.padding = "0 10px"
@@ -67,8 +67,8 @@ class Editor {
         text_input.style.overflowY = "auto"
         text_input.style.padding = "10px"
         text_input.style.boxSizing = "border-box"
-        text_input.style.backgroundColor = theme == "light" ? "white" : "#1e1e1e"
-        text_input.style.color = theme == "light" ? "black" : "white"
+        text_input.style.backgroundColor = "var(--palette-2)"
+        text_input.style.color = "var(--palette-text)"
         text_input.style.fontFamily = "Arial, sans-serif"
         text_input.style.fontSize = "14px"
         this.element.appendChild(text_input)
@@ -77,8 +77,8 @@ class Editor {
     addButton(innerHTML:string,onclick:(this: HTMLButtonElement, ev: PointerEvent)=>any) {
         let button = document.createElement("button")
         button.innerHTML = innerHTML
-        button.style.background = this.theme == "light" ? "#EEE" : "#111"
-        button.style.color = this.theme == "light" ? "#111" : "#EEE"
+        button.style.background = "var(--palette-1)"
+        button.style.color = "var(--palette-text)"
         button.style.marginRight = "10px"
         button.addEventListener("click", onclick)
         this.element.querySelector("#mod_bar").appendChild(button)

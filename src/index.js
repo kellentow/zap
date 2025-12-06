@@ -4,14 +4,14 @@ import manifestData from './manifest.json'
 import workerString from './main_worker.str.js'
 import mainString from '../dist/ts/str.main.js'
 
-function createScript(src) {
+function create_script(src) {
     let script = document.createElement("script")
     document.body.appendChild(script)
     script.src = src
     return script
 }
 
-function createTextScript(text) {
+function create_text_script(text) {
     let blob = new Blob([mainString], { type: 'application/javascript' });
     let blobUrl = URL.createObjectURL(blob);
     let script = create_script(blobUrl);

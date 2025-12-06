@@ -299,10 +299,6 @@
       if (typeof text !== "string") {
         text = JSON.stringify(text);
       }
-      if (text.length > 2 ** 12) {
-        console.warn("Message too long, not sending.");
-        return;
-      }
       let time = Date.now();
       let message_id = `${global.room}--${crypto.randomUUID()}-${crypto.randomUUID()}`;
       let recipients_sessions = encrytion_enabled && recipients ? recipients.map((r) => session_crypto.get_session(r)).filter((s) => s) : [];
@@ -675,7 +671,7 @@
       modifier_bar.id = "mod_bar";
       modifier_bar.style.width = "100%";
       modifier_bar.style.height = "10%";
-      modifier_bar.style.backgroundColor = theme == "light" ? "#f0f0f0" : "#2e2e2e";
+      modifier_bar.style.backgroundColor = "var(--palette-4)";
       modifier_bar.style.display = "flex";
       modifier_bar.style.alignItems = "center";
       modifier_bar.style.padding = "0 10px";
@@ -722,8 +718,8 @@
       text_input.style.overflowY = "auto";
       text_input.style.padding = "10px";
       text_input.style.boxSizing = "border-box";
-      text_input.style.backgroundColor = theme == "light" ? "white" : "#1e1e1e";
-      text_input.style.color = theme == "light" ? "black" : "white";
+      text_input.style.backgroundColor = "var(--palette-2)";
+      text_input.style.color = "var(--palette-text)";
       text_input.style.fontFamily = "Arial, sans-serif";
       text_input.style.fontSize = "14px";
       this.element.appendChild(text_input);
@@ -731,8 +727,8 @@
     addButton(innerHTML, onclick) {
       let button = document.createElement("button");
       button.innerHTML = innerHTML;
-      button.style.background = this.theme == "light" ? "#EEE" : "#111";
-      button.style.color = this.theme == "light" ? "#111" : "#EEE";
+      button.style.background = "var(--palette-1)";
+      button.style.color = "var(--palette-text)";
       button.style.marginRight = "10px";
       button.addEventListener("click", onclick);
       this.element.querySelector("#mod_bar").appendChild(button);
@@ -872,8 +868,10 @@
     save("dark", window.zap_global.dark);
     if (window.zap_global.dark) {
       document.documentElement.classList.add("dark");
+      document.documentElement.classList.remove("light");
     } else {
       document.documentElement.classList.remove("dark");
+      document.documentElement.classList.add("light");
     }
     let md = "";
     if (window.zap_global.editor) {

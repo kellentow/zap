@@ -1,9 +1,9 @@
 :root.light {
-  --palette-1: #c4b7ff;
-  --palette-2: #b1a0ff;
-  --palette-3: #9a83ff;
-  --palette-4: #8165ff;
-  --palette-5: #7050ff;
+  --palette-1: #ebe6fd;
+  --palette-2: #e8e2ff;
+  --palette-3: #e0d8ff;
+  --palette-4: #ded4ff;
+  --palette-5: #d0c4fa;
   --palette-text: #0a0324;
 }
 
@@ -13,7 +13,7 @@
   --palette-3: #1c143a;
   --palette-4: #10082d;
   --palette-5: #0a0324;
-  --palette-text: #c4b7ff;
+  --palette-text: #d0c4fa;
 }
 
 #servers_div {

@@ -202,10 +202,10 @@ let senders: {
         if (typeof text !== "string") {
             text = JSON.stringify(text);
         }
-        if (text.length > 2 ** 12) { //4kb max
-            console.warn("Message too long, not sending.");
-            return;
-        }
+        //if (text.length > 2 ** 12) { //4kb max
+        //    console.warn("Message too long, not sending.");
+        //    return;
+        //}
         let time = Date.now();
         let message_id = `${global.room}--${crypto.randomUUID()}-${crypto.randomUUID()}`
         let recipients_sessions: crypto_session[] = (encrytion_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
