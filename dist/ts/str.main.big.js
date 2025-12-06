@@ -335,16 +335,16 @@
       }
     },
     request_history: function(global, recipients) {
-      let ids = global.messages[global.room].map(((v, i, a) => {
+      let ids = global.messages[global.room].map((v, i, a) => {
         return v.id;
-      }));
+      });
       let recipients_sessions = encrytion_enabled && recipients ? recipients.map((r) => session_crypto.get_session(r)).filter((s) => s) : [];
       lbsend(3, global.account, ids, global.room, true, recipients_sessions);
     },
     send_history: function(global, ids, recipients) {
-      let msgs = global.messages[global.room].map(((v, i, a) => {
+      let msgs = global.messages[global.room].map((v, i, a) => {
         return ids.indexOf(v.id) != -1 ? v : null;
-      }));
+      });
       let recipients_sessions = encrytion_enabled && recipients ? recipients.map((r) => session_crypto.get_session(r)).filter((s) => s) : [];
       lbsend(4, global.account, msgs, global.room, true, recipients_sessions);
     },
@@ -432,15 +432,15 @@
       }
     },
     history_request: function(global, account, content, room) {
-      let recievers2 = global.online[global.room].map(((v, i, a) => {
+      let recievers2 = global.online[global.room].map((v, i, a) => {
         return v.account.id;
-      }));
+      });
       senders.send_history(global, content, recievers2);
     },
     recieve_history: function(global, account, content, room) {
-      let ids = global.messages[global.room].map(((v, i, a) => {
+      let ids = global.messages[global.room].map((v, i, a) => {
         return v.id;
-      }));
+      });
       for (let i = 0; i < content.length; i++) {
         let msg = content[i];
         if (ids.indexOf(msg.id) == -1) {
@@ -900,12 +900,12 @@
     temp.remove();
   }
   document.title = "Zap Messenger Rewritten";
-  var id = setInterval((function() {
+  var id = setInterval(function() {
     if (document.readyState == "complete") {
       clearInterval(id);
       onLoad();
     }
-  }), 100);
+  }, 100);
   setInterval(onPing2, 500);
   setInterval(keyResend2, 3e4);
   window.get = recievers.bind(window.zap_global).all;
