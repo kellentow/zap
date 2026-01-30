@@ -1,23 +1,101 @@
+// Encrypt large data using AES-GCM + RSA-OAEP
+export async function encryptLargePayload(
+    rsaPublicKey: CryptoKey,
+    plaintext: Uint8Array | ArrayBuffer | string
+) {
+    if (typeof plaintext === "string") {
+        plaintext = new TextEncoder().encode(plaintext);
+    } else if (plaintext instanceof ArrayBuffer) {
+        plaintext = new Uint8Array(plaintext);
+    }
+
+    // 1. Generate AES key
+    const aesKey = await crypto.subtle.generateKey(
+        { name: "AES-GCM", length: 256 },
+        true, // extractable, so we can wrap it
+        ["encrypt", "decrypt"]
+    );
+
+    // 2. Encrypt the plaintext
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        aesKey,
+        (plaintext as any as ArrayBuffer)
+    );
+
+    // 3. Wrap (RSA-encrypt) the AES key
+    const wrappedKey = await crypto.subtle.wrapKey(
+        "raw",
+        aesKey,
+        rsaPublicKey,
+        { name: "RSA-OAEP" }
+    );
+
+    return {
+        wrappedKey: new Uint8Array(wrappedKey),
+        iv,
+        ciphertext: new Uint8Array(ciphertext),
+    };
+}
+// Decrypt data encrypted by encryptLargePayload()
+export async function decryptLargePayload(
+    rsaPrivateKey: CryptoKey,
+    wrappedKey: Uint8Array | ArrayBuffer,
+    iv: Uint8Array | ArrayBuffer,
+    ciphertext: Uint8Array | ArrayBuffer
+) {
+    wrappedKey = wrappedKey instanceof Uint8Array ? wrappedKey : new Uint8Array(wrappedKey);
+    iv = iv instanceof Uint8Array ? iv : new Uint8Array(iv);
+    ciphertext = ciphertext instanceof Uint8Array ? ciphertext : new Uint8Array(ciphertext);
+
+    // 1. Unwrap (RSA-decrypt) the AES key
+    const aesKey = await crypto.subtle.unwrapKey(
+        "raw",
+        (wrappedKey as any as ArrayBuffer),
+        rsaPrivateKey,
+        { name: "RSA-OAEP" },
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["decrypt"]
+    );
+
+    // 2. Decrypt the ciphertext
+    const decrypted = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: (iv as any as ArrayBuffer) },
+        aesKey,
+        (ciphertext as any as ArrayBuffer)
+    );
+
+    return new Uint8Array(decrypted);
+}
+
 class crypto_session {
     static version = 1;
     id: string;
     other_key: CryptoKey;
     self_keys: CryptoKeyPair;
 
-    constructor(id:string, other_key:CryptoKey, self_keys:CryptoKeyPair) {
+    constructor(id: string, other_key: CryptoKey, self_keys: CryptoKeyPair) {
         this.id = id;
         this.other_key = other_key;
         this.self_keys = self_keys;
     }
 
     async encrypt(message: string): Promise<ArrayBuffer> {
-        const encoded = new TextEncoder().encode(message);
-        return await window.crypto.subtle.encrypt({ name: "RSA-OAEP" }, this.other_key, encoded);
+        const payload = await encryptLargePayload(this.other_key, message);
+        const json = JSON.stringify(payload);
+        return new TextEncoder().encode(json).buffer;
     }
 
     async decrypt(ciphertext: ArrayBuffer): Promise<string> {
-        const decrypted = await window.crypto.subtle.decrypt({ name: "RSA-OAEP" }, this.self_keys.privateKey, ciphertext);
-        return new TextDecoder().decode(decrypted);
+        let json, payload;
+
+        json = new TextDecoder().decode(ciphertext);
+
+        payload = JSON.parse(json);
+
+        return await decryptLargePayload(this.self_keys.privateKey, payload.wrappedKey, payload.iv, payload.ciphertext) as any as string;
     }
 
     async serialize() {
@@ -32,7 +110,7 @@ class crypto_session {
         };
     }
 
-    static async deserialize(data:any) {
+    static async deserialize(data: any) {
         if (data.version !== crypto_session.version) {
             throw new Error("Incompatible crypto_session version");
         }
@@ -62,15 +140,15 @@ async function makeKeys() {
     const privateKey = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
     console.log("Public Key:", btoa(String.fromCharCode(...new Uint8Array(publicKey))));
     console.log("Private Key:", btoa(String.fromCharCode(...new Uint8Array(privateKey))));
-    return { publicKey, privateKey, keyPair};
+    return { publicKey, privateKey, keyPair };
 }
 
 class crypto_manager {
     static version = 1;
     self_keys: CryptoKeyPair;
-    sessions: {[key:string]: crypto_session} = {};
+    sessions: { [key: string]: crypto_session } = {};
 
-    constructor(self_keys:CryptoKeyPair) {
+    constructor(self_keys: CryptoKeyPair) {
         this.self_keys = self_keys;
     }
 
@@ -79,14 +157,14 @@ class crypto_manager {
         return new crypto_manager(keyPair);
     }
 
-    get_session(id:string): crypto_session {
+    get_session(id: string): crypto_session {
         if (id in this.sessions) {
             return this.sessions[id];
         }
         return null;
     }
 
-    add_session(id:string, other_key:string) {
+    add_session(id: string, other_key: string) {
         if (id in this.sessions) {
             return this.sessions[id];
         }
@@ -104,7 +182,7 @@ class crypto_manager {
     }
 
     async serialize() {
-        let sessions_serialized: {[key:string]: any} = {};
+        let sessions_serialized: { [key: string]: any } = {};
         for (let [id, session] of Object.entries(this.sessions)) {
             sessions_serialized[id] = session.serialize();
         }
@@ -118,7 +196,7 @@ class crypto_manager {
         };
     }
 
-    static async deserialize(data:any) {
+    static async deserialize(data: any) {
         if (data.version !== crypto_manager.version) {
             throw new Error("Incompatible crypto_manager version");
         }

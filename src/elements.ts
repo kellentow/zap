@@ -11,7 +11,9 @@ let div = document.getElementById("chat_div");
 let css_element = document.getElementById("css");
 let settings_menu = document.getElementById("settings_menu");
 let settings_button = document.getElementById("settings_button");
+let style = document.createElement("style");
+document.head.appendChild(style);
 
 export {msg_send,online_bar,msg_input,chat_div,msg_container,
     servers_div,info_floater,server_adder,typing_indicator,
-    div,css_element,settings_menu,settings_button}
+    div,css_element,settings_menu,settings_button,style}

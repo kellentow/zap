@@ -1,0 +1,37 @@
+[
+    {
+        "text": "- Fixed image sizing issues.\n- Added Changelogs\n- Started tracking versions.",
+        "date": "2025-12-26",
+        "version_str": "1.0.1.a"
+    },
+    {
+        "text": "- Added pfps.\n- Added typing indicator.\n- Fixed history syncing while not encrypted.\n- Added favicon.\n- Fixed various minor bugs.\n- Improved changelog rendering.\n### dev yapping\n I'm using an external library so if the app takes longer to load, i'm sorry. i might make it a custom library later but idrc rn. \n oki byeeeee",
+        "date": "2026-01-16",
+        "version_str": "1.0.2.a"
+    },
+    {
+        "text": "Fixed bugs related to pfps and image rendering.",
+        "date": "2026-01-16",
+        "version_str": "1.0.2.b"
+    },
+    {
+        "text": "Fixed bugs related to message rendering.",
+        "date": "2026-01-16",
+        "version_str": "1.0.2.c"
+    },
+    {
+        "text": "- Fixed bugs related to status rendering.\n- Refactored code\n- Added more attachment types\n    - videos\n    - audio\n    - pdfs\n    - text files",
+        "date": "2026-01-21",
+        "version_str": "1.0.3.a"
+    },
+    {
+        "text": "- Improved styling of statuses\n - made attachments bigger\n - fixed history syncing (maybe????)",
+        "date": "2026-01-22",
+        "version_str": "1.0.4.a"
+    },
+    {
+        "text": "- Added blocking\n- Replaced external library\n- Fixed various minor bugs.",
+        "date": "2026-06-10",
+        "version_str": "1.0.5.a"
+    }
+]

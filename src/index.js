@@ -5,60 +5,68 @@ import workerString from './main_worker.str.js'
 import mainString from '../dist/ts/str.main.js'
 
 function create_script(src) {
-    let script = document.createElement("script")
-    document.body.appendChild(script)
-    script.src = src
-    return script
+  const script = document.createElement("script");
+  script.async = false; // preserve execution order
+  script.src = src;
+  document.body.appendChild(script);
+  return script;
 }
 
 function create_text_script(text) {
-    let blob = new Blob([mainString], { type: 'application/javascript' });
-    let blobUrl = URL.createObjectURL(blob);
-    let script = create_script(blobUrl);
-    script.onload = (() => { URL.revokeObjectURL(blobUrl) });
-    return script
+  // Create a blob URL for inline script text and add it as a script element
+  const blob = new Blob([text], { type: 'application/javascript' });
+  const blobUrl = URL.createObjectURL(blob);
+  const script = create_script(blobUrl);
+  script.onload = () => { URL.revokeObjectURL(blobUrl); };
+  return script;
 }
 
 function create_css(text) {
-    const style = document.createElement('style');
-    style.textContent = text;
-    document.head.appendChild(style);
+  const style = document.createElement('style');
+  style.textContent = text;
+  document.head.appendChild(style);
 }
 
 function create_html(text, parent, ...a) {
-    /**
-     * Adds text as a html object to the parent object
-     * @param {string} text - The html code
-     * @param {HTMLElement} parent - The parent for the code
-     */
-    const container = document.createElement('div');
-    container.innerHTML = text;
-    
-    // Append elements (except scripts)
-    Array.from(container.children).forEach(el => {
-        if (el.tagName !== 'SCRIPT') {parent.appendChild(el)}
-    });
+  /**
+   * Adds text as a html object to the parent object
+   * @param {string} text - The html code
+   * @param {HTMLElement} parent - The parent for the code
+   */
+  const container = document.createElement('div');
+  container.innerHTML = text;
 
-    // Execute scripts
-    Array.from(container.querySelectorAll('script')).forEach(script => {
-        if (script.src) {
-            create_script(script.src);
-        } else {
-            create_text_script(script.textContent);
-        }
-    });
+  // Append elements (except scripts)
+  // Append non-script elements
+  Array.from(container.children).forEach(el => {
+    if (el.tagName !== 'SCRIPT') { parent.appendChild(el); }
+  });
+
+  // Execute scripts in document order. Inline scripts use blob URLs so
+  // they execute as separate script resources (and can be revoked).
+  Array.from(container.querySelectorAll('script')).forEach(script => {
+    if (script.src) {
+      const s = create_script(script.src);
+      s.async = false;
+    } else {
+      create_text_script(script.textContent);
+    }
+  });
 }
 
 
 let div = document.getElementById("chat_div");
 if (div) {
-    location.reload(); // Reload if div already exists
-    throw Error("Chat div already exists, reloading page to avoid conflicts.")
+  // If an existing chat container is present, remove it and continue
+  // so this injector can reliably re-initialize the UI.
+  console.warn("Existing chat_div found — removing to allow re-injection.");
+  div.remove();
 }
 
-for (let i = 0; i < document.body.children.length; i++) {
-    document.body.children[i].style.display = "none";
-}
+// Safely hide existing body children (use a static snapshot of children)
+Array.from(document.body.children).forEach(child => {
+  child.style.display = "none";
+});
 
 console.log("HTML & CSS")
 create_css(cssContent)
@@ -70,7 +78,7 @@ console.log("manifest")
 const jsonString = JSON.stringify(manifestData);
 let manifestblob = new Blob([jsonString], { type: 'application/json' });
 let manifestblobUrl = URL.createObjectURL(manifestblob);
-let manifestLink = document.createElement('link'); 
+let manifestLink = document.createElement('link');
 
 manifestLink.rel = 'manifest';
 document.head.appendChild(manifestLink);
@@ -82,7 +90,9 @@ console.log("worker")
 let workerblob = new Blob([workerString], { type: 'application/javascript' });
 let workerblobUrl = URL.createObjectURL(workerblob);
 
-window.worker = new Worker(workerblobUrl)
+window.worker = new Worker(workerblobUrl);
+// Worker has its own reference to the script; we can revoke the blob URL now.
+try { URL.revokeObjectURL(workerblobUrl); } catch (e) { /* ignore */ }
 
 // Main js
 console.log("script")

@@ -1,14 +1,106 @@
+import { crypto_manager, crypto_session } from "./crypto";
 import { Account, Message, zapGlobals } from "./main.d";
 import { msg_container } from "./elements";
-import { crypto_manager, crypto_session } from "./crypto";
 
-let encrytion_enabled = true;
-let encrytion_ready = false;
+let FAVICON_UNREAD = "";
+let FAVICON_READ = "";
+
+async function canvas_to_b64(canvas: OffscreenCanvas): Promise<string> {
+        let blob = await canvas.convertToBlob({ type: 'image/png' });
+        let reader = new FileReader();
+        let base64data: string = "";
+        await new Promise((resolve) => {
+            reader.readAsDataURL(blob);
+            reader.onloadend = () => {
+                base64data = reader.result as string;
+                resolve(null);
+            };
+        });
+        return base64data
+    }
+
+;(async ()=>{
+    // making the logo in ram is bad juju but we ball
+    let canvas = new OffscreenCanvas(128,128); 
+    let ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffea00";
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 3;
+    let points = [
+        { x:0.703125 , y:0.6015625 },
+        { x:0.3984375, y:0.1015625 },
+        { x:0.5      , y:0.5       },
+        { x:0.296875 , y:0.5       },
+        { x:0.6015625, y:1         },
+        { x:0.5      , y:0.6015625 },
+        { x:0.703125 , y:0.6015625 },
+    ]
+    ctx.beginPath();
+    for (let i = 0; i < points.length; i++) {
+        let p = points[i];
+        if (i == 0) {
+            ctx.moveTo(p.x*128, p.y*128);
+        } else {
+            ctx.lineTo(p.x*128, p.y*128);
+        }
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    FAVICON_READ = await canvas_to_b64(canvas)
+    set_favicon(FAVICON_READ);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#FF0000";
+    ctx.beginPath();
+
+    ctx.ellipse(16, 16, 16, 16, 0, 0, 2 * Math.PI);
+
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    FAVICON_UNREAD = await canvas_to_b64(canvas)
+})();
+
+let encryption_enabled = false; // config
+let encryption_ready = false;
 let session_crypto: crypto_manager = null
-crypto_manager.init().then((manager) => {
-    session_crypto = manager
-    encrytion_ready = true;
-});
+if (encryption_enabled) {
+    crypto_manager.init().then((manager) => {
+        session_crypto = manager
+        encryption_ready = true;
+    });
+} else {
+    if (document.visibilityState == "visible") {
+        if (!confirm(
+            "Encryption cannot be used at this time.\n" +
+            "Hit OK to continue without encryption.\n" +
+            "Hit Cancel to leave the page."
+        )) {
+            window.location.href = "about:blank";
+        }
+    }
+}
+
+function set_favicon(iconUrl: string) {
+    // Create a new link element
+    var link = document.createElement('link');
+    link.type = 'image/x-icon';
+    link.rel = 'shortcut icon';
+    link.href = iconUrl;
+    
+    // Remove existing favicons
+    var head = document.getElementsByTagName('head')[0];
+    var existingIcons = head.querySelectorAll('link[rel~="icon"]');
+    existingIcons.forEach(function(icon) {
+        head.removeChild(icon);
+    });
+    
+    // Append the new link element to the head
+    head.appendChild(link);
+}
 
 function sendNotification(title: string, message: string) {
     // Only send if page is hidden and notifications are allowed
@@ -17,7 +109,7 @@ function sendNotification(title: string, message: string) {
     }
 }
 
-let formatDate = function formatDate(date:Date) {
+let formatDate = function formatDate(date: Date) {
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -47,16 +139,20 @@ function change_room_binder(global: zapGlobals, room: string, element: HTMLEleme
         if (element) {
             element.classList.add("selected");
         }
-        load_db(global.db,"messages").then((messages)=>{
-            let room_messages:Message[] = (messages.filter((a:Message)=>{return a.id && a.id.startsWith(global.room+"--")}) as Message[])
-            global.messages[global.room].push(...room_messages)
-            global.messages[global.room].sort((a,b)=>{return a.timestamp-b.timestamp})
+        load_db(global.db, "messages").then((messages) => {
+            messages.forEach((element:Message) => {
+                console.debug(element.id,element.id.startsWith(global.room + "--"));
+            });
+            let room_messages: Message[] = (messages.filter((a: Message) => { return a.id && a.id.startsWith(global.room + "--") }) as Message[])
+            global.messages[global.room]=[...room_messages];
+            global.messages[global.room].sort((a, b) => { return a.timestamp - b.timestamp })
+            global.lastRenderedIndex = 0;
             global.reTick = true;
         })
         global.reTick = true;
-        let send_join = function() {
-            if (!encrytion_ready) {
-                return setTimeout(send_join,10) // wait to send keys since don't have any yet
+        let send_join = function () {
+            if (!encryption_ready) {
+                return setTimeout(send_join, 10) // wait to send keys since don't have any yet
             }
             senders.join(global)
             senders.crypto_request(global)
@@ -66,24 +162,33 @@ function change_room_binder(global: zapGlobals, room: string, element: HTMLEleme
 }
 
 if (typeof window.send !== 'function') {
-    console.warn("send() not defined. Using mock send.");
-    window.send = function (a: any, b: any, c: any, d: any) {
-        console.debug("Mock send triggered with:", [a, b, c, d]);
-    };
+    console.warn("send() not defined. Environment should provide `window.send`.");
 }
 
 function lbsend(a: any, b: any, c: any, d: any, encrypt: boolean = undefined, encryption_sessions: crypto_session[] = []) {
     if (typeof encrypt == "undefined") {
         encrypt = true
     }
-    if (encrypt && encrytion_ready) {
+    if (encrypt && encryption_ready) {
         let messages: any[][] = []
 
         let allPromises = encryption_sessions.map((session) => {
-            let enc_a = session.encrypt(JSON.stringify(a));
-            let enc_b = session.encrypt(JSON.stringify(b));
-            let enc_c = session.encrypt(JSON.stringify(c));
-            let enc_d = session.encrypt(JSON.stringify(d));
+            let enc_a = session.encrypt(JSON.stringify(a)).catch(err => {
+                console.error("enc_a failed", err, JSON.stringify(a), a);
+                throw err;
+            });;
+            let enc_b = session.encrypt(JSON.stringify(b)).catch(err => {
+                console.error("enc_b failed", err, JSON.stringify(b), b);
+                throw err;
+            });;
+            let enc_c = session.encrypt(JSON.stringify(c)).catch(err => {
+                console.error("enc_c failed", err, JSON.stringify(c), c);
+                throw err;
+            });;
+            let enc_d = session.encrypt(JSON.stringify(d)).catch(err => {
+                console.error("enc_d failed", err, JSON.stringify(d), d);
+                throw err;
+            });;
             return Promise.all([enc_a, enc_b, enc_c, enc_d])
                 .then(([a, b, c, d]) => {
                     let str_a = arrayBufferToBase64(a)
@@ -122,6 +227,10 @@ function load(key: string, Default: any) {
 }
 function save_db_key(db: IDBDatabase, table: string, value: any, key?: string): Promise<void> {
     return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error("Database not initialized"));
+            return;
+        }
         const tx = db.transaction(table, "readwrite");
         const store = tx.objectStore(table);
         const request = store.put(value, key);
@@ -132,6 +241,10 @@ function save_db_key(db: IDBDatabase, table: string, value: any, key?: string): 
 
 function load_db_key<T>(db: IDBDatabase, table: string, key: string, Default: T): Promise<T> {
     return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error("Database not initialized"));
+            return;
+        }
         const tx = db.transaction(table, "readonly");
         const store = tx.objectStore(table);
         const request = store.get(key);
@@ -148,29 +261,6 @@ function load_db<T>(db: IDBDatabase, table: string): Promise<T[]> {
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
     });
-}
-
-async function encryptArray(array: any[], session: crypto_session) {
-    array = array.map((item) => {
-        return session.encrypt(JSON.stringify(item));
-    });
-    array = await Promise.all(array);
-    array = array.map((item) => {
-        return arrayBufferToBase64(item);
-    });
-    return array;
-}
-
-async function decryptArray(array: any[]) {
-    array = array.map((item) => {
-        return base64ToArrayBuffer(item);
-    });
-    array = array.map((item) => {
-        return session_crypto.decrypt(item).then((decrypted) => {
-            return JSON.parse(decrypted);
-        });
-    });
-    return Promise.all(array);
 }
 
 function base64ToArrayBuffer(base64: string) {
@@ -196,7 +286,7 @@ let senders: {
     message: Function, ping: Function, join: Function
     crypto: Function, crypto_request: Function, crypto_response: Function,
     request_history: Function, send_history: Function,
-    base: Function, bind: Function 
+    base: Function, bind: Function
 } = {
     message: function (global: zapGlobals, text: string, recipients?: string[]) { // Send a message
         if (typeof text !== "string") {
@@ -208,17 +298,18 @@ let senders: {
         //}
         let time = Date.now();
         let message_id = `${global.room}--${crypto.randomUUID()}-${crypto.randomUUID()}`
-        let recipients_sessions: crypto_session[] = (encrytion_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
-        lbsend(0, JSON.stringify(global.account), [time, text, message_id], global.room, encrytion_enabled, recipients_sessions);
+        let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
+        lbsend(0, JSON.stringify(global.account), [time, text, message_id], global.room, encryption_enabled, recipients_sessions);
     },
-    ping: function (global: zapGlobals, recipients?: string[]) { // Send a ping
-        let recipients_sessions: crypto_session[] = (encrytion_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
-        lbsend(1, JSON.stringify(global.account), Date.now(), global.room, true, recipients_sessions);
+    ping: function (global: zapGlobals, status:string, recipients?: string[]) { // Send a ping
+        let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
+        lbsend(1, JSON.stringify(global.account), {now: Date.now(), status: status}, global.room, encryption_enabled, recipients_sessions);
     },
     join: function (global: zapGlobals) { // Send a join notif
         lbsend(2, JSON.stringify(global.account), Date.now(), global.room, false)
         senders.crypto_request(global)
-    }, 
+        senders.request_history(global)
+    },
     crypto: function (global: zapGlobals, message: any) { // crypto base
         if (typeof message !== "string") {
             message = JSON.stringify(message);
@@ -229,7 +320,7 @@ let senders: {
         senders.crypto(global, { type: "KEYrequest", id: global.account.id });
     },
     crypto_response: function (global: zapGlobals) { // Send your public key
-        if (encrytion_ready && typeof global.account != "undefined") {
+        if (encryption_ready && typeof global.account != "undefined") {
             window.crypto.subtle.exportKey("spki", session_crypto.self_keys.publicKey).then((exported) => {
                 senders.crypto(global, { type: "KEYresponse", id: global.account.id, public: arrayBufferToBase64(exported) });
             });
@@ -237,15 +328,16 @@ let senders: {
             setTimeout(senders.crypto_response, 100, [global])
         }
     },
-    request_history: function(global: zapGlobals, recipients?: string[]) {
-        let ids = global.messages[global.room].map(((v,i,a)=>{return v.id}))
-        let recipients_sessions: crypto_session[] = (encrytion_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
-        lbsend(3,global.account,ids,global.room, true, recipients_sessions)
+    request_history: function (global: zapGlobals, recipients?: string[]) {
+        let ids = global.messages[global.room].map(((v, i, a) => { return v.id }))
+        let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
+        lbsend(3, global.account, ids, global.room, encryption_enabled, recipients_sessions)
     },
-    send_history: function(global: zapGlobals, ids:string[], recipients?: string[]) {
-        let msgs = global.messages[global.room].map(((v,i,a)=>{return ids.indexOf(v.id) != -1 ? v: null}))
-        let recipients_sessions: crypto_session[] = (encrytion_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
-        lbsend(4,global.account,msgs,global.room, true, recipients_sessions)
+    send_history: function (global: zapGlobals, ids: string[], recipients?: string[]) {
+
+        let msgs = global.messages[global.room].map(((v, i, a) => { return ids.indexOf(v.id) != -1 ? v : null }))
+        let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
+        lbsend(4, global.account, msgs, global.room, encryption_enabled, recipients_sessions)
     },
     base: function (global: zapGlobals, a: any, b: any, c: any, d: any) { window.send(a, b, c, d) },
     bind: function (global: zapGlobals) {
@@ -268,7 +360,10 @@ let recievers: {
     message: function (global: zapGlobals, account: Account, content: [timestamp: number, message: string, id: string], room: string) {
         var timestamp = content[0], message = content[1], id = content[2];
         console.debug("Received message in room ".concat(room, ":"), { timestamp, account, message });
-        sendNotification("Zap Messenger:  " + account.name + " sent you a message!", message);
+        if (document.hidden) {
+            set_favicon(FAVICON_UNREAD);
+            sendNotification("Zap Messenger:  " + account.name + " sent you a message!", message);
+        }
         let new_message: Message = {
             timestamp: timestamp,
             account,
@@ -276,29 +371,17 @@ let recievers: {
             id
         }
         global.messages[room].push(new_message);
-        save_db_key(global.db, "messages", new_message);
+        save_db_key(global.db, "messages", new_message).catch((e) => {
+            console.error("Error saving message to DB:", e);
+        }).then(() => {
+            global.reTick = true;
+        });
     },
-    ping: function (global: zapGlobals, account: Account, content: number, room: string) {
+    ping: function (global: zapGlobals, account: Account, content: {now:number, status:string}, room: string) {
         if (!Object.prototype.hasOwnProperty.call(global.online, room)) {
             global.online[room] = [];
         }
-        let old_l = global.online[room].filter(function (v) { v.account.id == account.id; });
-        if (old_l.length == 0) {
-            old_l = [{ account, last: 20000, list: [], avg: Date.now() }];
-        }
-        let old = old_l[0];
-        var list = old.list, last = old.last;
-        last = Date.now() - content;
-        list.push(last);
-        if (list.length > 10) {
-            list.shift();
-        }
-        let avg_1 = 0;
-        list.forEach(function (delta) {
-            avg_1 += delta;
-        });
-        avg_1 /= list.length;
-        global.online[room].unshift({ account, last: content, list: list, avg: avg_1 });
+        global.online[room].unshift({ account, last: content.now, status: content.status});
     },
     join: function (global: zapGlobals, account: Account, content: number, room: string) { //ping but only once and unencrypted
         recievers.ping(global, account, content, room)
@@ -336,12 +419,12 @@ let recievers: {
         }
     },
     history_request: function (global: zapGlobals, account: Account, content: string[], room: string) {
-        let recievers = global.online[global.room].map(((v,i,a)=>{return v.account.id}))
-        senders.send_history(global,content,recievers)
-    }, 
+        let recievers = global.online[global.room].map(((v, i, a) => { return v.account.id }))
+        senders.send_history(global, content, recievers)
+    },
     recieve_history: function (global: zapGlobals, account: Account, content: Message[], room: string) {
-        let ids: string[] = global.messages[global.room].map(((v,i,a)=> {return v.id}))
-        for (let i = 0; i<content.length; i++) {
+        let ids: string[] = global.messages[global.room].map(((v, i, a) => { return v.id }))
+        for (let i = 0; i < content.length; i++) {
             let msg = content[i]
             if (ids.indexOf(msg.id) == -1) {
                 global.messages[room].push(msg)
@@ -355,7 +438,7 @@ let recievers: {
             for (let i = 0; i < (enc_msg.length); i++) {
                 let message = enc_msg[i]
                 if (message[4] == global.account.id) {
-                    type = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[0])))
+                    type = JSON.parse(await (session_crypto.decrypt(base64ToArrayBuffer(message[0]))))
                     stringed_account = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[1])))
                     content = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[2])))
                     room = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[3])))
@@ -399,4 +482,4 @@ let recievers: {
     }
 }
 
-export { save, load, save_db_key, load_db, load_db_key, senders, recievers, sendNotification, change_room_binder, formatDate}
+export { save, load, save_db_key, load_db, load_db_key, senders, recievers, sendNotification, change_room_binder, formatDate, set_favicon, FAVICON_READ, FAVICON_UNREAD,canvas_to_b64}

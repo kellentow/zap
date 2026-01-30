@@ -7,6 +7,7 @@ interface Server {
 interface Account {
     id: string;
     name: string;
+    pfp: string;
 }
 
 interface Message {
@@ -23,10 +24,13 @@ interface zapGlobals {
     account: Account;
     reTick: boolean;
     lastRenderedIndex: number;
-    dark: boolean;
-    online: { [key: string]: { account: Account, list: number[], last: number, avg: number }[] };
+    theme: string;
+    status: string;
+    blocked: string[];
+    online: { [key: string]: { account: Account, status: string, last: number}[] };
     editor: any;
     db: IDBDatabase;
+    image_rendering: boolean;
 }
 
 export {Server,Account,zapGlobals,Message}

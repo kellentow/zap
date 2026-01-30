@@ -4,6 +4,7 @@
     "lib": ["es2022", "dom"],
     "typeRoots": ["./types", "./node_modules/@types"],
     "esModuleInterop": true,
+    "resolveJsonModule": true,
     "noImplicitAny": true,
     "moduleResolution": "node",
     "outDir": "dist/ts",

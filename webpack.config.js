@@ -46,5 +46,5 @@ module.exports = {
       }
     }
   ],
-  mode: 'development', // 'development' or 'production'
+  mode: 'production', // 'development' or 'production'
 };

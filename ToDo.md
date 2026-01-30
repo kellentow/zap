@@ -1,0 +1,8 @@
+- [X] strip style from sent msgs
+- [X] Typing Indicator
+- [X] Profile pics
+- [X] fix gifs (send via b64?))
+- [X] Blocking
+- [ ] DMs
+- [ ] Mentioning
+- [ ] Fix History
