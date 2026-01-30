@@ -23,6 +23,7 @@ interface zapGlobals {
     servers: Server[];
     account: Account;
     reTick: boolean;
+    firstRenderedIndex: number;
     lastRenderedIndex: number;
     theme: string;
     status: string;

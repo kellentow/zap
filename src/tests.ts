@@ -110,6 +110,7 @@ window.test = function() {
         servers: [],
         account: {id: "", name: "", pfp: ""},
         reTick: false,
+        firstRenderedIndex: 0,
         lastRenderedIndex: 0,
         theme: "light",
         status: "online",

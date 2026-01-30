@@ -30,8 +30,8 @@
         "version_str": "1.0.4.a"
     },
     {
-        "text": "- Added blocking\n- Replaced external library\n- Fixed various minor bugs.",
-        "date": "2026-06-10",
+        "text": "- Added blocking\n- added context menu\n- made it only load some messages (like discord)\n- Fixed various minor bugs.",
+        "date": "2026-01-30",
         "version_str": "1.0.5.a"
     }
 ]

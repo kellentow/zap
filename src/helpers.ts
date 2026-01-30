@@ -1,6 +1,7 @@
 import { crypto_manager, crypto_session } from "./crypto";
 import { Account, Message, zapGlobals } from "./main.d";
 import { msg_container } from "./elements";
+import { initialRender } from "./loops";
 
 let FAVICON_UNREAD = "";
 let FAVICON_READ = "";
@@ -124,7 +125,6 @@ let formatDate = function formatDate(date: Date) {
 
 function change_room_binder(global: zapGlobals, room: string, element: HTMLElement) {
     return function () {
-        global.lastRenderedIndex = 0; // Reset last rendered index when changing room
         msg_container.innerHTML = "";
         global.room = room;
         console.debug("Changed room to:", room);
@@ -148,6 +148,9 @@ function change_room_binder(global: zapGlobals, room: string, element: HTMLEleme
             global.messages[global.room].sort((a, b) => { return a.timestamp - b.timestamp })
             global.lastRenderedIndex = 0;
             global.reTick = true;
+            global.firstRenderedIndex = 0;
+            global.lastRenderedIndex = 0; // Reset last rendered index when changing room
+            initialRender(global);
         })
         global.reTick = true;
         let send_join = function () {

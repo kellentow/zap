@@ -6,9 +6,10 @@ import { Editor } from './editor'
 import changelogs from './changelogs.json'
 import './tests'
 import { init as contextMenuInit } from './contextmenu'
-//import showdown from 'showdown' // external library scary ):
+import showdown from 'showdown' // external library scary ):
 // bye bye showdown, hello shitty homemade library
-import {parseMarkdown, charsToHtml} from './mdparser'
+//import {parseMarkdown, charsToHtml} from './mdparser'
+//nvm it broken
 
 set_favicon(FAVICON_READ);
 
@@ -34,7 +35,7 @@ document.addEventListener("beforeunload", function () {
     senders.ping(window.zap_global);
 });
 
-//let converter = new showdown.Converter();
+let converter = new showdown.Converter();
 
 window.zap_global = {
     messages: {},
@@ -43,6 +44,7 @@ window.zap_global = {
     account: load("account", {}), // Default 
     reTick: true,
     status: "online",
+    firstRenderedIndex:0,
     lastRenderedIndex: 0,
     theme: load("theme", "light"),
     blocked: load("blocked", []),
@@ -84,8 +86,8 @@ if ((load("lastUpdateCheck", -1) + 1) < changelogs.length) {
     changelog_messages.forEach((change: { text: string, date: string, version_str: string }) => {
         let entry = document.createElement("div");
         let text = `## Version ${change.version_str} - ${change.date}\n` + change.text;
-        //var md_as_html = converter.makeHtml(text);
-        let md_as_html = charsToHtml(parseMarkdown(text));
+        let md_as_html = converter.makeHtml(text);
+        //let md_as_html = charsToHtml(parseMarkdown(text));
         entry.innerHTML = md_as_html;
         changelog_div.appendChild(entry);
     });
@@ -384,7 +386,7 @@ function onLoad() {
 
 document.title = "Zap Messenger Rewritten"
 let id = setInterval((function () {
-    if (document.readyState == "complete") {
+    if (document.readyState == "complete" && typeof window.zap_global.db !== "undefined") {
         clearInterval(id);
         onLoad();
     }

@@ -3848,6 +3848,265 @@
   var style = document.createElement("style");
   document.head.appendChild(style);
 
+  // src/loops.ts
+  var default_pfp = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAMAAABF0y+mAAAAY1BMVEUVFBoAAAAAAAsAAAXGxsfc3Nxramzi4uOEhIUJBxA2NTn////l5eWxsLKbm5yXl5ljY2U8PD/Q0NFbWl3y8vK4uLkaGR9GRUihoaIAAAhxcXO+vr99fX8nJyv7+/uQkJHW1td4h7FUAAAAsElEQVR4Ac3RBQKDMBAEQBZNurg7/P+VzdV7LwDiE4933Q8AJPcBBNrCKIzgLE7CyPyrvTGNCOnEjDn+EAXzJ5IlNUasEod+ybrR6LGFIDKaUiEMuye27GONNWNBOzCBRpAQxMhR4zQzfGLKSiMWroHgxha+xp2TJ3gw0+g3PCGIk42vEBmPJ3KHp7HlZgVjLhrd4VJXQ8qF86RwWqNDcKnDE65v8/dkE/D73BZiV/zuQNAJugNKvQoAAAAASUVORK5CYII=";
+  var scroll_listener = null;
+  var last_msg_author = null;
+  function renderMessage(global, message, side = "bottom") {
+    try {
+      let msg_div;
+      let neighbor;
+      if (side === "bottom") {
+        neighbor = msg_container.lastElementChild;
+      } else {
+        neighbor = msg_container.firstElementChild;
+      }
+      const br = document.createElement("br");
+      last_msg_author = neighbor ? neighbor.getAttribute("data-author") : null;
+      if (last_msg_author === message.account.id) {
+        if (side === "bottom") {
+          msg_div = msg_container.lastChild;
+          msg_div.appendChild(br);
+        } else {
+          msg_div = msg_container.firstChild;
+          msg_div.insertBefore(br, msg_div.children[4]);
+        }
+      } else {
+        msg_div = document.createElement("div");
+        msg_div.classList.add("msg", "author_" + message.account.id);
+        msg_div.id = "msg_" + message.id;
+        msg_div.setAttribute("data-author", message.account.id);
+        msg_div.innerHTML = `
+<img src="${message.account.pfp || default_pfp}" alt="pfp" style="width:30px;height:30px;border-radius:50%;margin-right:10px;" data-account="${message.account.id}">
+<strong>${message.account.name}</strong> 
+<span class="timestamp">${formatDate(new Date(message.timestamp))}</span>
+<br>`;
+      }
+      let container = document.createElement("div");
+      container.innerHTML = message.content;
+      if (side === "bottom") {
+        msg_div.appendChild(container);
+      } else {
+        msg_div.insertBefore(container, msg_div.children[4]);
+      }
+      if (side === "bottom") {
+        msg_container.appendChild(msg_div);
+      } else {
+        msg_container.insertBefore(msg_div, msg_container.firstChild);
+      }
+      if (msg_container.scrollHeight - msg_container.scrollTop - msg_container.clientHeight <= 200) {
+        msg_container.scrollTop = msg_container.scrollHeight;
+      }
+    } catch (e) {
+      console.log("Failed to render message", message, e);
+    }
+  }
+  function initialRender(global, count = 50) {
+    const messages = global.messages[global.room] || [];
+    const end = messages.length;
+    const start = Math.max(0, end - count);
+    global.firstRenderedIndex = start;
+    global.lastRenderedIndex = end - 1;
+    console.log(end, start);
+    for (let i = start; i < end; i++) {
+      renderMessage(global, messages[i], "bottom");
+    }
+    msg_container.scrollTop = msg_container.scrollHeight;
+    requestAnimationFrame(() => {
+      msg_container.scrollTop = msg_container.scrollHeight;
+    });
+    let scrolling = false;
+    console.log("Initial render done, setting up scroll listener.");
+    if (scroll_listener !== null) {
+      msg_container.removeEventListener("scroll", scroll_listener);
+    }
+    scroll_listener = () => {
+      console.log("scroll");
+      if (scrolling)
+        return;
+      scrolling = true;
+      requestAnimationFrame(() => {
+        if (msg_container.scrollTop < 100) {
+          loadUp(global);
+        }
+        if (msg_container.scrollHeight - msg_container.scrollTop - msg_container.clientHeight < 100) {
+          loadDown(global);
+        }
+        scrolling = false;
+      });
+    };
+    msg_container.addEventListener("scroll", scroll_listener);
+  }
+  function loadDown(global, batch = 20) {
+    const messages = global.messages[global.room];
+    if (window.zap_global.lastRenderedIndex >= messages.length - 1)
+      return;
+    let end = Math.min(
+      messages.length - 1,
+      window.zap_global.lastRenderedIndex + batch
+    );
+    for (let i = window.zap_global.lastRenderedIndex + 1; i <= end; i++) {
+      renderMessage(global, messages[i], "bottom");
+    }
+    window.zap_global.lastRenderedIndex = end;
+  }
+  function loadUp(global, batch = 20) {
+    const messages = global.messages[global.room];
+    if (window.zap_global.firstRenderedIndex <= 0)
+      return;
+    const container = msg_container;
+    const oldHeight = container.scrollHeight;
+    let start = Math.max(
+      0,
+      window.zap_global.firstRenderedIndex - batch
+    );
+    for (let i = window.zap_global.firstRenderedIndex - 1; i >= start; i--) {
+      renderMessage(global, messages[i], "top");
+    }
+    window.zap_global.firstRenderedIndex = start;
+    const newHeight = container.scrollHeight;
+    container.scrollTop += newHeight - oldHeight;
+  }
+  function onPing(global) {
+    if (!global.online[global.room]) {
+      global.online[global.room] = [];
+    }
+    senders.ping(global, global.status, window.zap_global.online[window.zap_global.room].map((ping) => {
+      return ping.account.id;
+    }));
+    Array.prototype.slice.call(online_bar.children).forEach(function(v) {
+      online_bar.removeChild(v).remove();
+    });
+    let now = Date.now();
+    global.online[global.room].sort(function(a, b) {
+      return a.account.name.localeCompare(b.account.name, void 0, { sensitivity: "base" });
+    });
+    let seen = /* @__PURE__ */ new Set();
+    global.online[global.room] = global.online[global.room].filter(function(user) {
+      if (seen.has(user.account.id)) {
+        return false;
+      }
+      seen.add(user.account.id);
+      return true;
+    });
+    global.online[global.room].forEach(function(value) {
+      if (value.last - now + 5e3 > 0) {
+        let container = document.createElement("div");
+        container.className = "user_status";
+        let pfp_container = document.createElement("div");
+        pfp_container.id = "pfp_container";
+        let pfp = document.createElement("img");
+        pfp.src = value.account.pfp || default_pfp;
+        pfp.alt = value.account.name;
+        pfp.id = "pfp";
+        pfp_container.appendChild(pfp);
+        let status_dot = document.createElement("div");
+        status_dot.id = "status";
+        let css_text;
+        if (value.status == "online") {
+          css_text = "background-color: green; ";
+        } else if (value.status == "away") {
+          css_text = "background-color: yellow; ";
+        } else if (value.status == "typing") {
+          css_text = "background-color: grey; ";
+        } else {
+          css_text = "background-color: red; ";
+        }
+        status_dot.style.cssText = css_text;
+        pfp_container.appendChild(status_dot);
+        container.appendChild(pfp_container);
+        let username_text = document.createElement("p");
+        username_text.innerText = value.account.name;
+        username_text.style.margin = "5px";
+        username_text.style.marginLeft = "10px";
+        container.appendChild(username_text);
+        online_bar.appendChild(container);
+      }
+    });
+  }
+  function onTick(global) {
+    if (!global.reTick) {
+      return;
+    }
+    ;
+    global.reTick = false;
+    if (!div) {
+      console.warn("Main div not found, reloading page to avoid conflicts.");
+      location.reload();
+      return;
+    }
+    msg_container.dispatchEvent(new Event("scroll"));
+    global.servers.forEach(function(server, i) {
+      let server_div = document.getElementById("server_" + server.id);
+      let server_html = `${server.img ? `<img src="${server.img}" alt="pfp">` : ""} ${server.nickname}`;
+      if (!server_div) {
+        server_div = document.createElement("div");
+        server_div.className = "server";
+        server_div.id = "server_" + server.id;
+        server_div.innerHTML = server_html;
+        server_div.onclick = change_room_binder(global, server.id, server_div);
+        servers_div.insertBefore(server_div, servers_div.lastChild);
+      } else {
+        server_div.innerHTML = server_html;
+        server_div.onclick = change_room_binder(global, server.id, server_div);
+      }
+    });
+    div.addEventListener("contextmenu", function(event) {
+      const target = event.target;
+      const serverEl = target.closest('[id^="server_"]');
+      if (serverEl && event.button === 2) {
+        event.preventDefault();
+        const serverId = serverEl.id.replace("server_", "");
+        let index = 0;
+        for (const server of global.servers) {
+          if (server.id === serverId) {
+            break;
+          }
+          ;
+          index++;
+        }
+        if (index === global.servers.length) {
+          index = -1;
+        }
+        ;
+        if (index == -1) {
+          return;
+        }
+        const removed = global.servers.splice(index, 1)[0];
+        save("servers", global.servers);
+        document.getElementById("servers_div").removeChild(serverEl);
+        console.log(`Server ${removed.nickname} removed.`);
+        if (global.room === serverId) {
+          global.room = global.servers.length > 0 ? global.servers[0].id : "1";
+          global.lastRenderedIndex = 0;
+          chat_div.innerHTML = "";
+        }
+        document.querySelectorAll(".server").forEach((el) => el.classList.remove("selected"));
+        const newSelected = document.getElementById("server_" + global.room);
+        if (newSelected) {
+          newSelected.classList.add("selected");
+        }
+        return;
+      }
+    });
+  }
+  function keyResend(global) {
+    senders.crypto_response(global);
+  }
+  function bind(global) {
+    let new_funcs = {};
+    new_funcs.onTick = function() {
+      onTick(global);
+    };
+    new_funcs.onPing = function() {
+      onPing(global);
+    };
+    new_funcs.keyResend = function() {
+      keyResend(global);
+    };
+    return new_funcs;
+  }
+
   // src/helpers.ts
   var FAVICON_UNREAD = "";
   var FAVICON_READ = "";
@@ -3960,7 +4219,6 @@
   };
   function change_room_binder(global, room, element) {
     return function() {
-      global.lastRenderedIndex = 0;
       msg_container.innerHTML = "";
       global.room = room;
       console.debug("Changed room to:", room);
@@ -3987,6 +4245,9 @@
         });
         global.lastRenderedIndex = 0;
         global.reTick = true;
+        global.firstRenderedIndex = 0;
+        global.lastRenderedIndex = 0;
+        initialRender(global);
       });
       global.reTick = true;
       let send_join = function() {
@@ -4308,200 +4569,133 @@
     }
   };
 
-  // src/loops.ts
-  var default_pfp = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAMAAABF0y+mAAAAY1BMVEUVFBoAAAAAAAsAAAXGxsfc3Nxramzi4uOEhIUJBxA2NTn////l5eWxsLKbm5yXl5ljY2U8PD/Q0NFbWl3y8vK4uLkaGR9GRUihoaIAAAhxcXO+vr99fX8nJyv7+/uQkJHW1td4h7FUAAAAsElEQVR4Ac3RBQKDMBAEQBZNurg7/P+VzdV7LwDiE4933Q8AJPcBBNrCKIzgLE7CyPyrvTGNCOnEjDn+EAXzJ5IlNUasEod+ybrR6LGFIDKaUiEMuye27GONNWNBOzCBRpAQxMhR4zQzfGLKSiMWroHgxha+xp2TJ3gw0+g3PCGIk42vEBmPJ3KHp7HlZgVjLhrd4VJXQ8qF86RwWqNDcKnDE65v8/dkE/D73BZiV/zuQNAJugNKvQoAAAAASUVORK5CYII=";
-  var last_msg_author = null;
-  function renderMessage(global, message) {
-    try {
-      let msg_div;
-      if (last_msg_author === message.account.id) {
-        msg_div = msg_container.lastChild;
-        msg_div.innerHTML += `<br>`;
-      } else {
-        msg_div = document.createElement("div");
-        msg_div.classList.add("msg", "author_" + message.account.id);
-        msg_div.id = "msg_" + message.id;
-        msg_div.innerHTML = `
-<img src="${message.account.pfp || default_pfp}" alt="pfp" style="width:30px;height:30px;border-radius:50%;margin-right:10px;">
-<strong>${message.account.name}</strong> 
-<span class="timestamp">${formatDate(new Date(message.timestamp))}</span>
-<br>`;
-      }
-      let container = document.createElement("div");
-      container.innerHTML = message.content;
-      msg_div.appendChild(container);
-      msg_container.appendChild(msg_div);
-      if (msg_container.scrollHeight - msg_container.scrollTop - msg_container.clientHeight <= msg_div.clientHeight + 20) {
-        msg_container.scrollTop = msg_container.scrollHeight;
-      }
-    } catch (e) {
-      console.log("Failed to render message", message, e);
+  // src/mdparser.ts
+  var state = {
+    inCodeBlock: false,
+    italics: false,
+    bold: false,
+    underline: false,
+    strikethrough: false,
+    size: 6
+  };
+  var tokens = {
+    "```": () => {
+      state.inCodeBlock = !state.inCodeBlock;
+    },
+    "**": () => {
+      state.bold = !state.bold;
+    },
+    "__": () => {
+      state.underline = !state.underline;
+    },
+    "~~": () => {
+      state.strikethrough = !state.strikethrough;
+    },
+    "*": () => {
+      state.italics = !state.italics;
+    },
+    "#": () => {
+      if (state.size > 0)
+        state.size -= 1;
+    },
+    "\n": () => {
+      state = {
+        inCodeBlock: false,
+        italics: false,
+        bold: false,
+        underline: false,
+        strikethrough: false,
+        size: 6
+      };
+      return "\n";
     }
-  }
-  function onPing(global) {
-    if (!global.online[global.room]) {
-      global.online[global.room] = [];
-    }
-    senders.ping(global, global.status, window.zap_global.online[window.zap_global.room].map((ping) => {
-      return ping.account.id;
-    }));
-    Array.prototype.slice.call(online_bar.children).forEach(function(v) {
-      online_bar.removeChild(v).remove();
-    });
-    let now = Date.now();
-    global.online[global.room].sort(function(a, b) {
-      return a.account.name.localeCompare(b.account.name, void 0, { sensitivity: "base" });
-    });
-    let seen = /* @__PURE__ */ new Set();
-    global.online[global.room] = global.online[global.room].filter(function(user) {
-      if (seen.has(user.account.id)) {
-        return false;
-      }
-      seen.add(user.account.id);
-      return true;
-    });
-    global.online[global.room].forEach(function(value) {
-      if (value.last - now + 5e3 > 0) {
-        let container = document.createElement("div");
-        container.className = "user_status";
-        let pfp_container = document.createElement("div");
-        pfp_container.id = "pfp_container";
-        let pfp = document.createElement("img");
-        pfp.src = value.account.pfp || default_pfp;
-        pfp.alt = value.account.name;
-        pfp.id = "pfp";
-        pfp_container.appendChild(pfp);
-        let status_dot = document.createElement("div");
-        status_dot.id = "status";
-        let css_text;
-        if (value.status == "online") {
-          css_text = "background-color: green; ";
-        } else if (value.status == "away") {
-          css_text = "background-color: yellow; ";
-        } else if (value.status == "typing") {
-          css_text = "background-color: grey; ";
-        } else {
-          css_text = "background-color: red; ";
-        }
-        status_dot.style.cssText = css_text;
-        pfp_container.appendChild(status_dot);
-        container.appendChild(pfp_container);
-        let username_text = document.createElement("p");
-        username_text.innerText = value.account.name;
-        username_text.style.margin = "5px";
-        username_text.style.marginLeft = "10px";
-        container.appendChild(username_text);
-        let block_button = document.createElement("button");
-        block_button.innerText = "Block";
-        block_button.style.marginLeft = "10px";
-        block_button.onclick = function() {
-          if (!global.blocked.includes(value.account.id)) {
-            global.blocked.push(value.account.id);
-            save("blocked", global.blocked);
-          }
-        };
-        container.appendChild(block_button);
-        online_bar.appendChild(container);
-      }
-    });
-  }
-  function onTick(global) {
-    if (!global.reTick) {
-      return;
-    }
-    ;
-    global.reTick = false;
-    if (!div) {
-      console.warn("Main div not found, reloading page to avoid conflicts.");
-      location.reload();
-      return;
-    }
-    const messages = global.messages[global.room] || [];
-    const start = global.lastRenderedIndex + 1;
-    const start_time = Date.now();
-    for (let i = start; i < messages.length; i++) {
-      let msg = messages[i];
-      global.lastRenderedIndex = i;
-      renderMessage(global, msg);
-      last_msg_author = msg.account.id;
-      if (Date.now() - start_time > 500) {
-        global.reTick = true;
-        break;
-      }
-    }
-    global.servers.forEach(function(server, i) {
-      let server_div = document.getElementById("server_" + server.id);
-      let server_html = `${server.img ? `<img src="${server.img}" alt="pfp">` : ""} ${server.nickname}`;
-      if (!server_div) {
-        server_div = document.createElement("div");
-        server_div.className = "server";
-        server_div.id = "server_" + server.id;
-        server_div.innerHTML = server_html;
-        server_div.onclick = change_room_binder(global, server.id, server_div);
-        servers_div.insertBefore(server_div, servers_div.lastChild);
-      } else {
-        server_div.innerHTML = server_html;
-        server_div.onclick = change_room_binder(global, server.id, server_div);
-      }
-    });
-    div.addEventListener("contextmenu", function(event) {
-      const target = event.target;
-      const serverEl = target.closest('[id^="server_"]');
-      if (serverEl && event.button === 2) {
-        event.preventDefault();
-        const serverId = serverEl.id.replace("server_", "");
-        let index = 0;
-        for (const server of global.servers) {
-          if (server.id === serverId) {
+  };
+  function parseMarkdown(input) {
+    let chars = [];
+    let i = 0;
+    while (i < input.length) {
+      let char = input[i];
+      if (!state.inCodeBlock) {
+        let matched = false;
+        for (let token in tokens) {
+          if (input.startsWith(token, i)) {
+            char = tokens[token]() || char;
+            i += token.length;
             break;
           }
-          ;
-          index++;
         }
-        if (index === global.servers.length) {
-          index = -1;
+        if (!matched) {
+          chars.push({
+            char: input[i],
+            bold: state.bold,
+            italics: state.italics,
+            underline: state.underline,
+            strikethrough: state.strikethrough,
+            size: state.size
+          });
+          i += 1;
         }
-        ;
-        if (index == -1) {
-          return;
+      } else {
+        if (input.startsWith("```", i)) {
+          tokens["```"]();
+          i += 3;
+          continue;
+        } else {
+          chars.push({
+            char: input[i],
+            bold: false,
+            italics: false,
+            underline: false,
+            strikethrough: false,
+            size: 6
+          });
+          i += 1;
         }
-        const removed = global.servers.splice(index, 1)[0];
-        save("servers", global.servers);
-        document.getElementById("servers_div").removeChild(serverEl);
-        console.log(`Server ${removed.nickname} removed.`);
-        if (global.room === serverId) {
-          global.room = global.servers.length > 0 ? global.servers[0].id : "1";
-          global.lastRenderedIndex = 0;
-          chat_div.innerHTML = "";
-        }
-        document.querySelectorAll(".server").forEach((el) => el.classList.remove("selected"));
-        const newSelected = document.getElementById("server_" + global.room);
-        if (newSelected) {
-          newSelected.classList.add("selected");
-        }
-        return;
       }
-    });
+    }
+    return chars;
   }
-  function keyResend(global) {
-    senders.crypto_response(global);
-  }
-  function bind(global) {
-    let new_funcs = {};
-    new_funcs.onTick = function() {
-      onTick(global);
-    };
-    new_funcs.onPing = function() {
-      onPing(global);
-    };
-    new_funcs.keyResend = function() {
-      keyResend(global);
-    };
-    return new_funcs;
+  function charsToHtml(chars) {
+    let html = "";
+    for (let charObj of chars) {
+      let openTags = "";
+      let closeTags = "";
+      if (charObj.bold) {
+        openTags += "<b>";
+        closeTags = "</b>" + closeTags;
+      }
+      if (charObj.italics) {
+        openTags += "<i>";
+        closeTags = "</i>" + closeTags;
+      }
+      if (charObj.underline) {
+        openTags += "<u>";
+        closeTags = "</u>" + closeTags;
+      }
+      if (charObj.strikethrough) {
+        openTags += "<s>";
+        closeTags = "</s>" + closeTags;
+      }
+      if (charObj.size < 6) {
+        openTags += `<span style="font-size:${Math.max(8, 24 - charObj.size * 2)}px;">`;
+        closeTags = "</span>" + closeTags;
+      }
+      if (charObj.char === "\n") {
+        html += "<br/>";
+      } else {
+        html += openTags + charObj.char + closeTags;
+      }
+    }
+    for (let i = 0; i < 5; i++) {
+      html = html.replaceAll("</b><b>", "");
+      html = html.replaceAll("</i><i>", "");
+      html = html.replaceAll("</u><u>", "");
+      html = html.replaceAll("</s><s>", "");
+    }
+    return html;
   }
 
   // src/editor.ts
-  var import_showdown = __toESM(require_showdown());
   async function urlToHtmlElement(url) {
     let response = await fetch(url);
     let element = document.createElement("div");
@@ -4559,7 +4753,6 @@
     }
     return element;
   }
-  var formatter = new import_showdown.default.Converter();
   var Editor = class {
     element;
     theme;
@@ -4657,7 +4850,7 @@
           return;
         }
       });
-      let formatted = formatter.makeHtml(replaced);
+      let formatted = charsToHtml(parseMarkdown(replaced));
       this.textinput.innerHTML = formatted;
     }
     addButton(innerHTML, onclick) {
@@ -4712,6 +4905,11 @@
       text: "- Improved styling of statuses\n - made attachments bigger\n - fixed history syncing (maybe????)",
       date: "2026-01-22",
       version_str: "1.0.4.a"
+    },
+    {
+      text: "- Added blocking\n- Replaced external library\n- Fixed various minor bugs.",
+      date: "2026-06-10",
+      version_str: "1.0.5.a"
     }
   ];
 
@@ -4814,6 +5012,7 @@
       servers: [],
       account: { id: "", name: "", pfp: "" },
       reTick: false,
+      firstRenderedIndex: 0,
       lastRenderedIndex: 0,
       theme: "light",
       status: "online",
@@ -4829,8 +5028,59 @@
     window.zap_global = og_globals;
   };
 
+  // src/contextmenu.ts
+  var contextMenuOptions = {};
+  function init(globals) {
+    contextMenuOptions = {
+      "Block": (target, e) => {
+        globals.blocked.push(target.getAttribute("data-account"));
+      }
+    };
+  }
+  chat_div.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    const target = e.target;
+    const account = target.getAttribute("data-account");
+    if (!account)
+      return;
+    let menu = document.createElement("div");
+    menu.style.position = "absolute";
+    menu.style.top = `${e.clientY}px`;
+    menu.style.left = `${e.clientX}px`;
+    menu.style.backgroundColor = "#333";
+    menu.style.color = "#fff";
+    menu.style.padding = "10px";
+    menu.style.borderRadius = "5px";
+    menu.style.zIndex = "1000";
+    for (const [option, action] of Object.entries(contextMenuOptions)) {
+      let optionElement = document.createElement("div");
+      optionElement.innerText = option;
+      optionElement.style.padding = "5px 0";
+      optionElement.style.cursor = "pointer";
+      optionElement.addEventListener("click", () => {
+        if (typeof action === "function") {
+          action(target, e);
+        }
+        document.body.removeChild(menu);
+      });
+      menu.appendChild(optionElement);
+    }
+    document.body.appendChild(menu);
+    document.addEventListener("click", function onClickOutside() {
+      if (document.body.contains(menu)) {
+        document.body.removeChild(menu);
+      }
+      document.removeEventListener("click", onClickOutside);
+    });
+    menu.addEventListener("mouseleave", () => {
+      if (document.body.contains(menu)) {
+        document.body.removeChild(menu);
+      }
+    });
+  });
+
   // src/main.ts
-  var import_showdown2 = __toESM(require_showdown());
+  var import_showdown = __toESM(require_showdown());
   set_favicon(FAVICON_READ);
   document.addEventListener("visibilitychange", function() {
     if (document.visibilityState === "hidden") {
@@ -4844,7 +5094,7 @@
     window.zap_global.status = "offline";
     senders.ping(window.zap_global);
   });
-  var converter = new import_showdown2.default.Converter();
+  var converter = new import_showdown.default.Converter();
   window.zap_global = {
     messages: {},
     room: "1",
@@ -4854,6 +5104,7 @@
     // Default 
     reTick: true,
     status: "online",
+    firstRenderedIndex: 0,
     lastRenderedIndex: 0,
     theme: load("theme", "light"),
     blocked: load("blocked", []),
@@ -4889,7 +5140,7 @@
       let entry = document.createElement("div");
       let text = `## Version ${change.version_str} - ${change.date}
 ` + change.text;
-      var md_as_html = converter.makeHtml(text);
+      let md_as_html = converter.makeHtml(text);
       entry.innerHTML = md_as_html;
       changelog_div.appendChild(entry);
     });
@@ -5119,6 +5370,7 @@
   })();
   (() => {
     let div2 = document.createElement("div");
+    div2.style.flexDirection = "column";
     div2.style.marginTop = "20px";
     function updateBlockedList() {
       div2.innerHTML = "<h3>Blocked Users</h3>";
@@ -5158,7 +5410,7 @@
   }
   document.title = "Zap Messenger Rewritten";
   var id = setInterval(function() {
-    if (document.readyState == "complete") {
+    if (document.readyState == "complete" && typeof window.zap_global.db !== "undefined") {
       clearInterval(id);
       onLoad();
     }
@@ -5166,6 +5418,7 @@
   setInterval(onPing2, 500);
   setInterval(keyResend2, 3e4);
   window.get = recievers.bind(window.zap_global).all;
+  init(window.zap_global);
 })();
 /*! Bundled license information:
 

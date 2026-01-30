@@ -7,14 +7,24 @@ let state = {
     size: 6
 }
 
-let tokens:{[key:string]: () => void | string} = {
+let tokens: { [key: string]: () => void | string } = {
     "```": () => { state.inCodeBlock = !state.inCodeBlock; },
     "**": () => { state.bold = !state.bold; },
     "__": () => { state.underline = !state.underline; },
     "~~": () => { state.strikethrough = !state.strikethrough; },
     "*": () => { state.italics = !state.italics; },
     "#": () => { if (state.size > 0) state.size -= 1; },
-    "\n": () => { return "\n"; }
+    "\n": () => {
+        state = {
+            inCodeBlock: false,
+            italics: false,
+            bold: false,
+            underline: false,
+            strikethrough: false,
+            size: 6
+        }
+        return "\n";
+    }
 }
 
 interface Char {
