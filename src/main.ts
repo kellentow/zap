@@ -180,6 +180,7 @@ msg_send.onclick = function () {
     if (window.zap_global.editor) {
         let content = window.zap_global.editor.getMD();
         let attachments = window.zap_global.editor.getAttachments();
+        window.zap_global.editor.clearAttachments();
         window.zap_global.editor.setMD('');
         let targets = window.zap_global.online[window.zap_global.room].map((ping) => { return ping.account.id })
         senders.message(window.zap_global, content, attachments, targets);

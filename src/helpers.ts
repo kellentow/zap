@@ -2,6 +2,7 @@ import { crypto_manager, crypto_session } from "./crypto";
 import { Account, Message, zapGlobals } from "./main.d";
 import { msg_container } from "./elements";
 import { initialRender } from "./loops";
+import Showdown from "showdown";
 
 let FAVICON_UNREAD = "";
 let FAVICON_READ = "";
@@ -282,7 +283,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
     return btoa(binary);
 }
 
-async function urlToHtmlElement(url:string): Promise<HTMLElement> {
+async function urlToHtmlElement(url:string, mime?:string ): Promise<HTMLElement> {
     let response = await fetch(url);
     let element = document.createElement('div');
     element.classList.add('attachment');
@@ -290,7 +291,9 @@ async function urlToHtmlElement(url:string): Promise<HTMLElement> {
         element.innerHTML = `Failed to load ${url}: ${response.status} ${response.statusText}`;
         return element;
     }
-    let mime = response.headers.get("Content-Type");
+    if (!mime) {
+        mime = response.headers.get("Content-Type");
+    }
     if (!mime) {
         element.innerHTML = `Failed to determine content type of ${url}`;
     } else if (mime.includes("text/html")) {
@@ -369,7 +372,6 @@ let senders: {
                     reader.readAsDataURL(att);
                 }));
             }
-            text = JSON.stringify({ text: text, attachments: b64_attachments });
         }
         let time = Date.now();
         let message_id = `${global.room}--${crypto.randomUUID()}-${crypto.randomUUID()}`
@@ -426,6 +428,8 @@ let senders: {
     }
 }
 
+let formatter = new Showdown.Converter();
+
 let recievers: {
     message: Function, ping: Function,
     crypto: Function, join: Function,
@@ -437,15 +441,19 @@ let recievers: {
         console.debug("Received message in room ".concat(room, ":"), { timestamp, account, message });
         if (document.hidden) {
             set_favicon(FAVICON_UNREAD);
-            sendNotification("Zap Messenger:  " + account.name + " sent you a message!", message);
+            if (global.blocked.indexOf(account.id) == -1) {
+                sendNotification("Zap Messenger:  " + account.name + " sent you a message!", message);
+            }
         }
-        let msg_content = message;
+        let msg_content = formatter.makeHtml(message);
         if (attachments && attachments.length > 0) {
             for (let i = 0; i < attachments.length; i++) {
                 let att = attachments[i];
                 let blob = new Blob([base64ToArrayBuffer(att.split(",")[1])]);
+                let mime = att.split(",")[0].split(":")[1].split(";")[0];
                 let url = URL.createObjectURL(blob);
-                let element = await urlToHtmlElement(url);
+                let element = await urlToHtmlElement(url, mime);
+                URL.revokeObjectURL(url);
                 msg_content += `<br/>`;
                 msg_content += element.outerHTML;
             }

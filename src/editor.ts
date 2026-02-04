@@ -7,9 +7,9 @@ class Editor {
     element:Element
     theme:string
     text:string
-    textinput:HTMLDivElement
+    textinput:HTMLTextAreaElement
     attachments:Blob[]
-    constructor (selector:string | Element, theme = "light") {
+    constructor (selector:string | HTMLTextAreaElement, theme = "light") {
         if (typeof selector == "string") {
             this.element = document.querySelector(selector)
         } else {
@@ -17,6 +17,7 @@ class Editor {
         }
         this.theme = theme
         this.textinput
+        this.attachments = []
 
         let modifier_bar = document.createElement("div")
         modifier_bar.id = "mod_bar"
@@ -34,8 +35,8 @@ class Editor {
         file_picker.accept = "image/*,video/*,audio/*,application/pdf,text/*"
         file_picker.style.display = "none"
         file_picker.onchange = () => {
-            let file:Blob = file_picker.files[0]
-            this.attachments.push(file)
+            let file:Blob[] = Array.from(file_picker.files)
+            this.attachments.push(...file)
         }
         modifier_bar.appendChild(file_picker)
 
@@ -45,7 +46,7 @@ class Editor {
 
         this.text = "Type shit or smth";
 
-        let text_input = document.createElement("div")
+        let text_input = document.createElement("textarea")
         text_input.id = "textinput"
         text_input.contentEditable = "true";
         text_input.ondragover = (e) => {e.preventDefault()};
@@ -55,6 +56,7 @@ class Editor {
         let timeout_id: number | null = null;
 
         this.textinput.addEventListener("keydown", (e: KeyboardEvent) => {
+            //e.preventDefault();
             window.zap_global.status = "typing"
             if (timeout_id) {
                 clearTimeout(timeout_id);
@@ -65,36 +67,24 @@ class Editor {
                 }
             }, 3000) as unknown as number;
 
-            let cursor_range = document.getSelection().getRangeAt(0)
-            if (cursor_range.startOffset !== cursor_range.endOffset) {
-                this.text = this.text.substring(0, cursor_range.startOffset) + this.text.substring(cursor_range.endOffset);
-            }
-            let cursor_pos = cursor_range.startOffset;
-            let inputting = "";
-            if (e.key === "Enter" && e.shiftKey) {
-                inputting += "\n";
-            } else if (e.key.length === 1) {
-                inputting += e.key;
-            }
-            this.text = this.text.substring(0, cursor_pos) + inputting + this.text.substring(cursor_pos);
+            this.text = this.textinput.value
+            this.update();
         });
     }
 
     update() {
         let replaced = this.text
-        replaced = replaced.replaceAll("\n", "<br/>")
-        replaced.match("<(.*?)>/g").forEach((match) => {
-            let user_id = match.replaceAll("<", "").replaceAll(">", "")
-            let user = window.zap_global.online[window.zap_global.room].find((u) => u.account.id == user_id)
-            if (user) {
-                replaced = replaced.replaceAll(match, `<span style="color: var(--palette-accent)">@${user.account.name}</span>`)
-            } else {
-                return
-            }
-        });
-        let formatted = formatter.makeHtml(replaced);
-        //let formatted = charsToHtml(parseMarkdown(replaced));
-        this.textinput.innerHTML = formatted
+        //replaced = replaced.replaceAll("\n", "<br/>")
+        //replaced.match("<(.*?)>/g").forEach((match) => {
+        //    let user_id = match.replaceAll("<", "").replaceAll(">", "")
+        //    let user = window.zap_global.online[window.zap_global.room].find((u) => u.account.id == user_id)
+        //    if (user) {
+        //        replaced = replaced.replaceAll(match, `<span style="color: var(--palette-accent)">@${user.account.name}</span>`)
+        //    } else {
+        //        return
+        //    }
+        //});
+        this.textinput.value = replaced
 
     }
 
@@ -115,10 +105,15 @@ class Editor {
 
     setMD (md:string) {
         this.text = md
+        this.update()
     }
 
     getAttachments():Blob[] {
         return this.attachments
+    }
+
+    clearAttachments() {
+        this.attachments = []
     }
 
     destroy () {
