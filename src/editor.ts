@@ -74,6 +74,7 @@ class Editor {
             this.element = selector
         }
         this.theme = theme
+        this.textinput
 
         let modifier_bar = document.createElement("div")
         modifier_bar.id = "mod_bar"
@@ -129,6 +130,8 @@ class Editor {
         let text_input = document.createElement("div")
         text_input.id = "textinput"
         text_input.contentEditable = "true";
+        text_input.ondragover = (e) => {e.preventDefault()};
+        text_input.ondragend = (e) => {e.preventDefault()};
         this.textinput = text_input;
         this.element.appendChild(text_input)
         let timeout_id: number | null = null;

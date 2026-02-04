@@ -7,42 +7,42 @@ let FAVICON_UNREAD = "";
 let FAVICON_READ = "";
 
 async function canvas_to_b64(canvas: OffscreenCanvas): Promise<string> {
-        let blob = await canvas.convertToBlob({ type: 'image/png' });
-        let reader = new FileReader();
-        let base64data: string = "";
-        await new Promise((resolve) => {
-            reader.readAsDataURL(blob);
-            reader.onloadend = () => {
-                base64data = reader.result as string;
-                resolve(null);
-            };
-        });
-        return base64data
-    }
+    let blob = await canvas.convertToBlob({ type: 'image/png' });
+    let reader = new FileReader();
+    let base64data: string = "";
+    await new Promise((resolve) => {
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => {
+            base64data = reader.result as string;
+            resolve(null);
+        };
+    });
+    return base64data
+}
 
-;(async ()=>{
+; (async () => {
     // making the logo in ram is bad juju but we ball
-    let canvas = new OffscreenCanvas(128,128); 
+    let canvas = new OffscreenCanvas(128, 128);
     let ctx = canvas.getContext("2d");
     ctx.fillStyle = "#ffea00";
     ctx.strokeStyle = "#000000";
     ctx.lineWidth = 3;
     let points = [
-        { x:0.703125 , y:0.6015625 },
-        { x:0.3984375, y:0.1015625 },
-        { x:0.5      , y:0.5       },
-        { x:0.296875 , y:0.5       },
-        { x:0.6015625, y:1         },
-        { x:0.5      , y:0.6015625 },
-        { x:0.703125 , y:0.6015625 },
+        { x: 0.703125, y: 0.6015625 },
+        { x: 0.3984375, y: 0.1015625 },
+        { x: 0.5, y: 0.5 },
+        { x: 0.296875, y: 0.5 },
+        { x: 0.6015625, y: 1 },
+        { x: 0.5, y: 0.6015625 },
+        { x: 0.703125, y: 0.6015625 },
     ]
     ctx.beginPath();
     for (let i = 0; i < points.length; i++) {
         let p = points[i];
         if (i == 0) {
-            ctx.moveTo(p.x*128, p.y*128);
+            ctx.moveTo(p.x * 128, p.y * 128);
         } else {
-            ctx.lineTo(p.x*128, p.y*128);
+            ctx.lineTo(p.x * 128, p.y * 128);
         }
     }
     ctx.closePath();
@@ -91,14 +91,14 @@ function set_favicon(iconUrl: string) {
     link.type = 'image/x-icon';
     link.rel = 'shortcut icon';
     link.href = iconUrl;
-    
+
     // Remove existing favicons
     var head = document.getElementsByTagName('head')[0];
     var existingIcons = head.querySelectorAll('link[rel~="icon"]');
-    existingIcons.forEach(function(icon) {
+    existingIcons.forEach(function (icon) {
         head.removeChild(icon);
     });
-    
+
     // Append the new link element to the head
     head.appendChild(link);
 }
@@ -140,11 +140,11 @@ function change_room_binder(global: zapGlobals, room: string, element: HTMLEleme
             element.classList.add("selected");
         }
         load_db(global.db, "messages").then((messages) => {
-            messages.forEach((element:Message) => {
-                console.debug(element.id,element.id.startsWith(global.room + "--"));
-            });
+            //messages.forEach((element: Message) => {
+            //    console.debug(element.id, element.id.startsWith(global.room + "--"));
+            //});
             let room_messages: Message[] = (messages.filter((a: Message) => { return a.id && a.id.startsWith(global.room + "--") }) as Message[])
-            global.messages[global.room]=[...room_messages];
+            global.messages[global.room] = [...room_messages];
             global.messages[global.room].sort((a, b) => { return a.timestamp - b.timestamp })
             global.lastRenderedIndex = 0;
             global.reTick = true;
@@ -164,9 +164,6 @@ function change_room_binder(global: zapGlobals, room: string, element: HTMLEleme
     };
 }
 
-if (typeof window.send !== 'function') {
-    console.warn("send() not defined. Environment should provide `window.send`.");
-}
 
 function lbsend(a: any, b: any, c: any, d: any, encrypt: boolean = undefined, encryption_sessions: crypto_session[] = []) {
     if (typeof encrypt == "undefined") {
@@ -304,9 +301,9 @@ let senders: {
         let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
         lbsend(0, JSON.stringify(global.account), [time, text, message_id], global.room, encryption_enabled, recipients_sessions);
     },
-    ping: function (global: zapGlobals, status:string, recipients?: string[]) { // Send a ping
+    ping: function (global: zapGlobals, status: string, recipients?: string[]) { // Send a ping
         let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
-        lbsend(1, JSON.stringify(global.account), {now: Date.now(), status: status}, global.room, encryption_enabled, recipients_sessions);
+        lbsend(1, JSON.stringify(global.account), { now: Date.now(), status: status }, global.room, encryption_enabled, recipients_sessions);
     },
     join: function (global: zapGlobals) { // Send a join notif
         lbsend(2, JSON.stringify(global.account), Date.now(), global.room, false)
@@ -380,11 +377,11 @@ let recievers: {
             global.reTick = true;
         });
     },
-    ping: function (global: zapGlobals, account: Account, content: {now:number, status:string}, room: string) {
+    ping: function (global: zapGlobals, account: Account, content: { now: number, status: string }, room: string) {
         if (!Object.prototype.hasOwnProperty.call(global.online, room)) {
             global.online[room] = [];
         }
-        global.online[room].unshift({ account, last: content.now, status: content.status});
+        global.online[room].unshift({ account, last: content.now, status: content.status });
     },
     join: function (global: zapGlobals, account: Account, content: number, room: string) { //ping but only once and unencrypted
         recievers.ping(global, account, content, room)
@@ -485,4 +482,4 @@ let recievers: {
     }
 }
 
-export { save, load, save_db_key, load_db, load_db_key, senders, recievers, sendNotification, change_room_binder, formatDate, set_favicon, FAVICON_READ, FAVICON_UNREAD,canvas_to_b64}
+export { save, load, save_db_key, load_db, load_db_key, senders, recievers, sendNotification, change_room_binder, formatDate, set_favicon, FAVICON_READ, FAVICON_UNREAD, canvas_to_b64 }

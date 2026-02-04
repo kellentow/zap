@@ -33,5 +33,10 @@
         "text": "- Added blocking\n- added context menu\n- made it only load some messages (like discord)\n- Fixed various minor bugs.",
         "date": "2026-01-30",
         "version_str": "1.0.5.a"
+    },
+    {
+        "text": "- Changed how assets are loaded \n- added theme matching buttons\n- fixed minor bugs",
+        "date": "2026-02-04",
+        "version_str": "1.1.0.a"
     }
 ]

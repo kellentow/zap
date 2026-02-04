@@ -74,7 +74,7 @@ function initialRender(global: zapGlobals, count = 50) {
 
     global.firstRenderedIndex = start;
     global.lastRenderedIndex = end - 1;
-    console.log(end,start)
+    //console.log(end,start)
 
     for (let i = start; i < end; i++) {
         renderMessage(global, messages[i], "bottom");
@@ -91,7 +91,7 @@ function initialRender(global: zapGlobals, count = 50) {
         msg_container.removeEventListener("scroll", scroll_listener);
     }
     scroll_listener = () => {
-        console.log("scroll")
+        //console.log("scroll")
         if (scrolling) return;
 
         scrolling = true;

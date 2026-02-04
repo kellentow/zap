@@ -30,6 +30,10 @@ fi
 if [[ "$NEW_HASH" != "$OLD_HASH" ]] || $flag_f; then
     echo "Source changed, rebuilding..."
 
+    echo "Packing Assets"
+    python3 pack.py ./assets ./src/assets.json
+    echo "Assets Packed"
+
     echo "Starting TS Check"
     rm -rf dist/ts/*
     tsc --noEmit

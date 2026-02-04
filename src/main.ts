@@ -1,3 +1,4 @@
+import "./networking"
 import { save, load, senders, recievers, change_room_binder, set_favicon, FAVICON_READ} from './helpers'
 import { settings_menu, server_adder, msg_send, settings_button, chat_div, style } from './elements'
 import { zapGlobals } from './main.d'
@@ -232,7 +233,20 @@ function remakeEditor() {
     });
 }
 function reloadTheme() {
-    document.documentElement.setAttribute("data-theme", window.zap_global.theme);
+    let theme = window.zap_global.theme;
+    document.documentElement.setAttribute("data-theme", theme);
+    let icon_color = "black";
+    if (theme == "obsidian") {
+        icon_color = "purple";
+    } else if (theme == "outerspace") {
+        icon_color = "white";
+    }
+    fetch("asset://settings_"+icon_color+".png").then(res => res.blob()).then(blob => {
+        (settings_button.children[0] as HTMLImageElement).src = URL.createObjectURL(blob);
+    });
+    fetch("asset://add_"+icon_color+".png").then(res => res.blob()).then(blob => {
+        (server_adder.children[0] as HTMLImageElement).src = URL.createObjectURL(blob);
+    });
 }
 function setTheme(theme: string) {
     window.zap_global.theme = theme;

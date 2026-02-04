@@ -68,12 +68,12 @@ Array.from(document.body.children).forEach(child => {
   child.style.display = "none";
 });
 
-console.log("HTML & CSS")
+//console.log("HTML & CSS")
 create_css(cssContent)
 create_html(htmlContent, document.body)
 
 // Manifest
-console.log("manifest")
+//console.log("manifest")
 
 const jsonString = JSON.stringify(manifestData);
 let manifestblob = new Blob([jsonString], { type: 'application/json' });
@@ -86,7 +86,7 @@ manifestLink.href = manifestblobUrl;
 
 manifestLink.onload = (() => { URL.revokeObjectURL(manifestblobUrl) })
 
-console.log("worker")
+//console.log("worker")
 let workerblob = new Blob([workerString], { type: 'application/javascript' });
 let workerblobUrl = URL.createObjectURL(workerblob);
 
@@ -95,7 +95,7 @@ window.worker = new Worker(workerblobUrl);
 try { URL.revokeObjectURL(workerblobUrl); } catch (e) { /* ignore */ }
 
 // Main js
-console.log("script")
+//console.log("script")
 create_text_script(mainString)
 
 /*
