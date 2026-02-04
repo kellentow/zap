@@ -282,13 +282,74 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
     return btoa(binary);
 }
 
+async function urlToHtmlElement(url:string): Promise<HTMLElement> {
+    let response = await fetch(url);
+    let element = document.createElement('div');
+    element.classList.add('attachment');
+    if (!response.ok) {
+        element.innerHTML = `Failed to load ${url}: ${response.status} ${response.statusText}`;
+        return element;
+    }
+    let mime = response.headers.get("Content-Type");
+    if (!mime) {
+        element.innerHTML = `Failed to determine content type of ${url}`;
+    } else if (mime.includes("text/html")) {
+        let iframe = document.createElement('iframe');
+        iframe.sandbox.remove("allow-same-origin");
+        iframe.sandbox.remove("allow-scripts");
+        iframe.srcdoc = await response.text();
+        iframe.style.width = "100%";
+        iframe.style.height = "100%";
+        iframe.style.border = "none";
+        element.appendChild(iframe);
+    } else if (mime.startsWith("image/")) {
+        let img = document.createElement('img');
+        img.src = url;
+        img.style.maxWidth = "100%";
+        img.style.height = "auto";
+        element.appendChild(img);
+    } else if (mime.startsWith("text/")) {
+        let pre = document.createElement('pre');
+        pre.textContent = await response.text();
+        element.appendChild(pre);
+    } else if (mime === "application/pdf") {
+        let embed = document.createElement('embed');
+        embed.src = url;
+        embed.type = "application/pdf";
+        embed.style.width = "100%";
+        embed.style.height = "100%";
+        element.appendChild(embed);
+    } else if (mime.startsWith("video/")) {
+        let video = document.createElement('video');
+        video.src = url;
+        video.controls = true;
+        video.style.width = "100%";
+        video.style.height = "auto";
+        element.appendChild(video);
+    } else if (mime.startsWith("audio/")) {
+        let audio = document.createElement('audio');
+        audio.src = url;
+        audio.controls = true;
+        element.appendChild(audio);
+    } else {
+        let downloader = document.createElement('a');
+        downloader.textContent = `Download file`;
+        downloader.href = url;
+        downloader.download = '';
+
+        element.innerHTML = `Unsupported content type: ${mime}`;
+        element.appendChild(downloader);
+    }
+    return element;
+}
+
 let senders: {
     message: Function, ping: Function, join: Function
     crypto: Function, crypto_request: Function, crypto_response: Function,
     request_history: Function, send_history: Function,
     base: Function, bind: Function
 } = {
-    message: function (global: zapGlobals, text: string, recipients?: string[]) { // Send a message
+    message: async function (global: zapGlobals, text: string, attachments?: any[], recipients?: string[]) { // Send a message
         if (typeof text !== "string") {
             text = JSON.stringify(text);
         }
@@ -296,10 +357,24 @@ let senders: {
         //    console.warn("Message too long, not sending.");
         //    return;
         //}
+        let b64_attachments: string[] = []
+        if (attachments && attachments.length > 0) {
+            for (let i = 0; i < attachments.length; i++) {
+                let att = attachments[i];
+                b64_attachments.push(await new Promise((resolve) => {
+                    let reader = new FileReader();
+                    reader.onloadend = () => {
+                        resolve((reader.result as string));
+                    };
+                    reader.readAsDataURL(att);
+                }));
+            }
+            text = JSON.stringify({ text: text, attachments: b64_attachments });
+        }
         let time = Date.now();
         let message_id = `${global.room}--${crypto.randomUUID()}-${crypto.randomUUID()}`
         let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
-        lbsend(0, JSON.stringify(global.account), [time, text, message_id], global.room, encryption_enabled, recipients_sessions);
+        lbsend(0, JSON.stringify(global.account), [time, text, message_id, b64_attachments], global.room, encryption_enabled, recipients_sessions);
     },
     ping: function (global: zapGlobals, status: string, recipients?: string[]) { // Send a ping
         let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
@@ -357,17 +432,28 @@ let recievers: {
     history_request: Function, recieve_history: Function,
     all: Function, bind: Function
 } = {
-    message: function (global: zapGlobals, account: Account, content: [timestamp: number, message: string, id: string], room: string) {
-        var timestamp = content[0], message = content[1], id = content[2];
+    message: async function (global: zapGlobals, account: Account, content: [timestamp: number, message: string, id: string, attachments?: string[]], room: string) {
+        var timestamp = content[0], message = content[1], id = content[2], attachments = content[3];
         console.debug("Received message in room ".concat(room, ":"), { timestamp, account, message });
         if (document.hidden) {
             set_favicon(FAVICON_UNREAD);
             sendNotification("Zap Messenger:  " + account.name + " sent you a message!", message);
         }
+        let msg_content = message;
+        if (attachments && attachments.length > 0) {
+            for (let i = 0; i < attachments.length; i++) {
+                let att = attachments[i];
+                let blob = new Blob([base64ToArrayBuffer(att.split(",")[1])]);
+                let url = URL.createObjectURL(blob);
+                let element = await urlToHtmlElement(url);
+                msg_content += `<br/>`;
+                msg_content += element.outerHTML;
+            }
+        }
         let new_message: Message = {
             timestamp: timestamp,
             account,
-            content: message,
+            content: msg_content,
             id
         }
         global.messages[room].push(new_message);

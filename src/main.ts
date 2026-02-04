@@ -178,10 +178,11 @@ async function promptForAccount() {
 
 msg_send.onclick = function () {
     if (window.zap_global.editor) {
-        let content = window.zap_global.editor.getHTML();
-        window.zap_global.editor.setHTML('');
+        let content = window.zap_global.editor.getMD();
+        let attachments = window.zap_global.editor.getAttachments();
+        window.zap_global.editor.setMD('');
         let targets = window.zap_global.online[window.zap_global.room].map((ping) => { return ping.account.id })
-        senders.message(window.zap_global, content, targets);
+        senders.message(window.zap_global, content, attachments, targets);
     }
 };
 
@@ -222,10 +223,10 @@ function remakeEditor() {
         'div#msg_input',
         "dark"
     );
-    window.zap_global.editor.setHTML(md);
+    window.zap_global.editor.setMD(md);
 
     (window.zap_global.editor as Editor).textinput.addEventListener("keydown", function (e: KeyboardEvent) {
-        if (e.key === "Enter" && !e.shiftKey && window.zap_global.editor.getHTML().trim() !== "") {
+        if (e.key === "Enter" && !e.shiftKey && window.zap_global.editor.getMD().trim() !== "") {
             // if (enter) and (not shift) and (cursor at end) and (no selection)
             e.preventDefault();
             msg_send.click();
@@ -241,10 +242,10 @@ function reloadTheme() {
     } else if (theme == "outerspace") {
         icon_color = "white";
     }
-    fetch("asset://settings_"+icon_color+".png").then(res => res.blob()).then(blob => {
+    fetch("asset://icons/settings_"+icon_color+".png").then(res => res.blob()).then(blob => {
         (settings_button.children[0] as HTMLImageElement).src = URL.createObjectURL(blob);
     });
-    fetch("asset://add_"+icon_color+".png").then(res => res.blob()).then(blob => {
+    fetch("asset://icons/add_"+icon_color+".png").then(res => res.blob()).then(blob => {
         (server_adder.children[0] as HTMLImageElement).src = URL.createObjectURL(blob);
     });
 }

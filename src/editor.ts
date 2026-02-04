@@ -1,72 +1,14 @@
-//import Showdown from "showdown";
-import {parseMarkdown, charsToHtml} from './mdparser';
+import Showdown from "showdown";
+//import {parseMarkdown, charsToHtml} from './mdparser';
 
-async function urlToHtmlElement(url:string): Promise<HTMLElement> {
-    let response = await fetch(url);
-    let element = document.createElement('div');
-    element.classList.add('attachment');
-    if (!response.ok) {
-        element.innerHTML = `Failed to load ${url}: ${response.status} ${response.statusText}`;
-        return element;
-    }
-    let mime = response.headers.get("Content-Type");
-    if (!mime) {
-        element.innerHTML = `Failed to determine content type of ${url}`;
-    } else if (mime.includes("text/html")) {
-        let iframe = document.createElement('iframe');
-        iframe.srcdoc = await response.text();
-        iframe.style.width = "100%";
-        iframe.style.height = "100%";
-        iframe.style.border = "none";
-        element.appendChild(iframe);
-    } else if (mime.startsWith("image/")) {
-        let img = document.createElement('img');
-        img.src = url;
-        img.style.maxWidth = "100%";
-        img.style.height = "auto";
-        element.appendChild(img);
-    } else if (mime.startsWith("text/")) {
-        let pre = document.createElement('pre');
-        pre.textContent = await response.text();
-        element.appendChild(pre);
-    } else if (mime === "application/pdf") {
-        let embed = document.createElement('embed');
-        embed.src = url;
-        embed.type = "application/pdf";
-        embed.style.width = "100%";
-        embed.style.height = "100%";
-        element.appendChild(embed);
-    } else if (mime.startsWith("video/")) {
-        let video = document.createElement('video');
-        video.src = url;
-        video.controls = true;
-        video.style.width = "100%";
-        video.style.height = "auto";
-        element.appendChild(video);
-    } else if (mime.startsWith("audio/")) {
-        let audio = document.createElement('audio');
-        audio.src = url;
-        audio.controls = true;
-        element.appendChild(audio);
-    } else {
-        let downloader = document.createElement('a');
-        downloader.textContent = `Download file`;
-        downloader.href = url;
-        downloader.download = '';
-
-        element.innerHTML = `Unsupported content type: ${mime}`;
-        element.appendChild(downloader);
-    }
-    return element;
-}
-
-//let formatter = new Showdown.Converter();
+let formatter = new Showdown.Converter();
 
 class Editor {
     element:Element
     theme:string
     text:string
     textinput:HTMLDivElement
+    attachments:Blob[]
     constructor (selector:string | Element, theme = "light") {
         if (typeof selector == "string") {
             this.element = document.querySelector(selector)
@@ -92,34 +34,10 @@ class Editor {
         file_picker.accept = "image/*,video/*,audio/*,application/pdf,text/*"
         file_picker.style.display = "none"
         file_picker.onchange = () => {
-            let file = file_picker.files[0]
-            let reader = new FileReader()
-            reader.onload = (e) => {
-                let img = document.createElement("img")
-                img.src = e.target.result as string
-                urlToHtmlElement(img.src).then((element) => {
-                    this.textinput.appendChild(element)
-                })
-            }
-            reader.readAsDataURL(file)
+            let file:Blob = file_picker.files[0]
+            this.attachments.push(file)
         }
         modifier_bar.appendChild(file_picker)
-
-        this.addButton("<b>B</b>", () => {
-            document.execCommand("bold")
-        })
-
-        this.addButton("<i>I</i>", () => {
-            document.execCommand("italic")
-        })
-
-        this.addButton("<u>U</u>", () => {
-            document.execCommand("underline")
-        })
-
-        this.addButton("<s>S</s>", () => {
-            document.execCommand("strikeThrough")
-        })
 
         this.addButton("📷", () => {
             file_picker.click()
@@ -174,8 +92,8 @@ class Editor {
                 return
             }
         });
-        //let formatted = formatter.makeHtml(replaced);
-        let formatted = charsToHtml(parseMarkdown(replaced));
+        let formatted = formatter.makeHtml(replaced);
+        //let formatted = charsToHtml(parseMarkdown(replaced));
         this.textinput.innerHTML = formatted
 
     }
@@ -191,12 +109,16 @@ class Editor {
         return button
     }
 
-    getHTML () {
-        return this.textinput.innerHTML
+    getMD () {
+        return this.text
     }
 
-    setHTML (html:string) {
-        this.textinput.innerHTML = html
+    setMD (md:string) {
+        this.text = md
+    }
+
+    getAttachments():Blob[] {
+        return this.attachments
     }
 
     destroy () {
