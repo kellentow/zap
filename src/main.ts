@@ -1,10 +1,10 @@
 import "./networking"
-import { save, load, senders, recievers, change_room_binder, set_favicon, FAVICON_READ} from './helpers'
+import { save, load, senders, recievers, change_room_binder, set_favicon, FAVICON_READ, arrayBufferToBase64 } from './helpers'
 import { settings_menu, server_adder, msg_send, settings_button, chat_div, style } from './elements'
 import { zapGlobals } from './main.d'
 import { bind } from './loops'
 import { Editor } from './editor'
-import changelogs from './changelogs.json'
+//import changelogs from './changelogs.json' // replaced by asset://changelogs.json
 import './tests'
 import { init as contextMenuInit } from './contextmenu'
 import showdown from 'showdown' // external library scary ):
@@ -45,7 +45,7 @@ window.zap_global = {
     account: load("account", {}), // Default 
     reTick: true,
     status: "online",
-    firstRenderedIndex:0,
+    firstRenderedIndex: 0,
     lastRenderedIndex: 0,
     theme: load("theme", "light"),
     blocked: load("blocked", []),
@@ -55,47 +55,49 @@ window.zap_global = {
     image_rendering: load("image_rendering", true)
 };
 
-// Show changelogs for new versions
-if ((load("lastUpdateCheck", -1) + 1) < changelogs.length) {
-    let changelog_div = document.createElement("div");
-    changelog_div.innerHTML = "<h2>Changelogs</h2>";
-    changelog_div.style.width = "90%"
-    changelog_div.style.height = "90%"
-    changelog_div.style.overflowY = "auto"
-    changelog_div.style.backgroundColor = "var(--palette-2)"
-    changelog_div.style.color = "var(--palette-text)"
-    changelog_div.style.padding = "10px"
-    changelog_div.style.boxSizing = "border-box"
-    changelog_div.style.zIndex = "1000";
-    changelog_div.style.left = "5%";
-    changelog_div.style.top = "5%";
+fetch("asset://changelogs.json").then((txt) => { return txt.json() }).then((changelogs) => {
+    // Show changelogs for new versions
+    if ((load("lastUpdateCheck", -1) + 1) < changelogs.length) {
+        let changelog_div = document.createElement("div");
+        changelog_div.innerHTML = "<h2>Changelogs</h2>";
+        changelog_div.style.width = "90%"
+        changelog_div.style.height = "90%"
+        changelog_div.style.overflowY = "auto"
+        changelog_div.style.backgroundColor = "var(--palette-2)"
+        changelog_div.style.color = "var(--palette-text)"
+        changelog_div.style.padding = "10px"
+        changelog_div.style.boxSizing = "border-box"
+        changelog_div.style.zIndex = "1000";
+        changelog_div.style.left = "5%";
+        changelog_div.style.top = "5%";
 
-    // button to close
-    let close_button = document.createElement("button");
-    close_button.innerText = "Close";
-    close_button.onclick = function () {
-        changelog_div.remove();
-    };
-    changelog_div.appendChild(close_button);
-    changelog_div.style.position = "fixed";
-    changelog_div.style.top = "7%";
-    changelog_div.style.right = "7%";
+        // button to close
+        let close_button = document.createElement("button");
+        close_button.innerText = "Close";
+        close_button.onclick = function () {
+            changelog_div.remove();
+        };
+        changelog_div.appendChild(close_button);
+        changelog_div.style.position = "fixed";
+        changelog_div.style.top = "7%";
+        changelog_div.style.right = "7%";
 
-    // the logs
+        // the logs
 
-    let changelog_messages = changelogs.slice(load("lastUpdateCheck", -1) + 1);
-    changelog_messages.forEach((change: { text: string, date: string, version_str: string }) => {
-        let entry = document.createElement("div");
-        let text = `## Version ${change.version_str} - ${change.date}\n` + change.text;
-        let md_as_html = converter.makeHtml(text);
-        //let md_as_html = charsToHtml(parseMarkdown(text));
-        entry.innerHTML = md_as_html;
-        changelog_div.appendChild(entry);
-    });
+        let changelog_messages = changelogs.slice(load("lastUpdateCheck", -1) + 1);
+        changelog_messages.forEach((change: { text: string, date: string, version_str: string }) => {
+            let entry = document.createElement("div");
+            let text = `## Version ${change.version_str} - ${change.date}\n` + change.text;
+            let md_as_html = converter.makeHtml(text);
+            //let md_as_html = charsToHtml(parseMarkdown(text));
+            entry.innerHTML = md_as_html;
+            changelog_div.appendChild(entry);
+        });
 
-    document.body.appendChild(changelog_div);
-    save("lastUpdateCheck", changelogs.length - 1);
-}
+        document.body.appendChild(changelog_div);
+        save("lastUpdateCheck", changelogs.length - 1);
+    }
+});
 
 
 let normalizeOps = function normalizeOps(ops: [string, IDBObjectStoreParameters?][]) {
@@ -123,6 +125,9 @@ request.onupgradeneeded = (event) => {
             needed.push(["+ messages", { keyPath: "id", autoIncrement: true }]);
         case 1:
             needed.push(["-+ messages", { keyPath: "id", autoIncrement: false }]);
+        case 2:
+            needed.push(["-+ messages", { keyPath: "id", autoIncrement: false }]); // reset messages store to clear out old messages with different account field
+            needed.push(["+ accounts", { keyPath: "id" }]);
     }
 
     needed = normalizeOps(needed)
@@ -178,10 +183,11 @@ async function promptForAccount() {
 
 msg_send.onclick = function () {
     if (window.zap_global.editor) {
-        let content = window.zap_global.editor.getMD();
+        let content:string = window.zap_global.editor.getMD();
         let attachments = window.zap_global.editor.getAttachments();
         window.zap_global.editor.clearAttachments();
         window.zap_global.editor.setMD('');
+
         let targets = window.zap_global.online[window.zap_global.room].map((ping) => { return ping.account.id })
         senders.message(window.zap_global, content, attachments, targets);
     }
@@ -243,10 +249,10 @@ function reloadTheme() {
     } else if (theme == "outerspace") {
         icon_color = "white";
     }
-    fetch("asset://icons/settings_"+icon_color+".png").then(res => res.blob()).then(blob => {
+    fetch("asset://icons/settings_" + icon_color + ".png").then(res => res.blob()).then(blob => {
         (settings_button.children[0] as HTMLImageElement).src = URL.createObjectURL(blob);
     });
-    fetch("asset://icons/add_"+icon_color+".png").then(res => res.blob()).then(blob => {
+    fetch("asset://icons/add_" + icon_color + ".png").then(res => res.blob()).then(blob => {
         (server_adder.children[0] as HTMLImageElement).src = URL.createObjectURL(blob);
     });
 }
@@ -366,7 +372,7 @@ reloadTheme();
     function updateBlockedList() {
         div.innerHTML = "<h3>Blocked Users</h3>";
         style.innerText = '';
-        for ( let id in window.zap_global.blocked ) {
+        for (let id in window.zap_global.blocked) {
             let blocked_id = window.zap_global.blocked[id];
             let blocked_div = document.createElement("div");
             blocked_div.style.display = "flex";

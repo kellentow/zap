@@ -1,214 +1,144 @@
-// Encrypt large data using AES-GCM + RSA-OAEP
-export async function encryptLargePayload(
-    rsaPublicKey: CryptoKey,
-    plaintext: Uint8Array | ArrayBuffer | string
-) {
-    if (typeof plaintext === "string") {
-        plaintext = new TextEncoder().encode(plaintext);
-    } else if (plaintext instanceof ArrayBuffer) {
-        plaintext = new Uint8Array(plaintext);
-    }
-
-    // 1. Generate AES key
-    const aesKey = await crypto.subtle.generateKey(
-        { name: "AES-GCM", length: 256 },
-        true, // extractable, so we can wrap it
-        ["encrypt", "decrypt"]
-    );
-
-    // 2. Encrypt the plaintext
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const ciphertext = await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv },
-        aesKey,
-        (plaintext as any as ArrayBuffer)
-    );
-
-    // 3. Wrap (RSA-encrypt) the AES key
-    const wrappedKey = await crypto.subtle.wrapKey(
-        "raw",
-        aesKey,
-        rsaPublicKey,
-        { name: "RSA-OAEP" }
-    );
-
-    return {
-        wrappedKey: new Uint8Array(wrappedKey),
-        iv,
-        ciphertext: new Uint8Array(ciphertext),
-    };
-}
-// Decrypt data encrypted by encryptLargePayload()
-export async function decryptLargePayload(
-    rsaPrivateKey: CryptoKey,
-    wrappedKey: Uint8Array | ArrayBuffer,
-    iv: Uint8Array | ArrayBuffer,
-    ciphertext: Uint8Array | ArrayBuffer
-) {
-    wrappedKey = wrappedKey instanceof Uint8Array ? wrappedKey : new Uint8Array(wrappedKey);
-    iv = iv instanceof Uint8Array ? iv : new Uint8Array(iv);
-    ciphertext = ciphertext instanceof Uint8Array ? ciphertext : new Uint8Array(ciphertext);
-
-    // 1. Unwrap (RSA-decrypt) the AES key
-    const aesKey = await crypto.subtle.unwrapKey(
-        "raw",
-        (wrappedKey as any as ArrayBuffer),
-        rsaPrivateKey,
-        { name: "RSA-OAEP" },
-        { name: "AES-GCM", length: 256 },
-        false,
-        ["decrypt"]
-    );
-
-    // 2. Decrypt the ciphertext
-    const decrypted = await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: (iv as any as ArrayBuffer) },
-        aesKey,
-        (ciphertext as any as ArrayBuffer)
-    );
-
-    return new Uint8Array(decrypted);
-}
+import nacl, { BoxKeyPair } from 'tweetnacl'
+import util from 'tweetnacl-util'
 
 class crypto_session {
-    static version = 1;
+    static version = 2;
+
     id: string;
-    other_key: CryptoKey;
-    self_keys: CryptoKeyPair;
+    otherPublicKey: Uint8Array; // recipient's public key
+    selfKeyPair: nacl.BoxKeyPair; // our key pair
 
-    constructor(id: string, other_key: CryptoKey, self_keys: CryptoKeyPair) {
+    constructor(id: string, otherPublicKey: Uint8Array, selfKeyPair?: nacl.BoxKeyPair) {
         this.id = id;
-        this.other_key = other_key;
-        this.self_keys = self_keys;
+        this.otherPublicKey = otherPublicKey;
+        this.selfKeyPair = selfKeyPair || nacl.box.keyPair(); // generate if not provided
     }
 
-    async encrypt(message: string): Promise<ArrayBuffer> {
-        const payload = await encryptLargePayload(this.other_key, message);
-        const json = JSON.stringify(payload);
-        return new TextEncoder().encode(json).buffer;
+    // --- encrypt message for recipient ---
+    encrypt(message: string): Uint8Array {
+        const nonce = nacl.randomBytes(nacl.box.nonceLength);
+        const plaintext = util.decodeUTF8(message);
+
+        const ciphertext = nacl.box(plaintext, nonce, this.otherPublicKey, this.selfKeyPair.secretKey);
+
+        // return {nonce + ciphertext} as one buffer
+        const combined = new Uint8Array(nonce.length + ciphertext.length);
+        combined.set(nonce, 0);
+        combined.set(ciphertext, nonce.length);
+        return combined;
     }
 
-    async decrypt(ciphertext: ArrayBuffer): Promise<string> {
-        let json, payload;
+    // --- decrypt incoming message ---
+    decrypt(data: Uint8Array): string {
+        const nonce = data.slice(0, nacl.box.nonceLength);
+        const ciphertext = data.slice(nacl.box.nonceLength);
 
-        json = new TextDecoder().decode(ciphertext);
+        const plaintext = nacl.box.open(ciphertext, nonce, this.otherPublicKey, this.selfKeyPair.secretKey);
+        if (!plaintext) throw new Error("Decryption failed or message was tampered with");
 
-        payload = JSON.parse(json);
-
-        return await decryptLargePayload(this.self_keys.privateKey, payload.wrappedKey, payload.iv, payload.ciphertext) as any as string;
+        return util.encodeUTF8(plaintext);
     }
 
-    async serialize() {
+    // --- serialize keys for storage or transfer ---
+    serialize() {
         return {
             version: crypto_session.version,
             id: this.id,
-            other_key: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("spki", this.other_key)))),
-            self_keys: {
-                publicKey: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("spki", this.self_keys.publicKey)))),
-                privateKey: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("pkcs8", this.self_keys.privateKey))))
+            otherPublicKey: util.encodeBase64(this.otherPublicKey),
+            selfKeyPair: {
+                publicKey: util.encodeBase64(this.selfKeyPair.publicKey),
+                secretKey: util.encodeBase64(this.selfKeyPair.secretKey)
             }
         };
     }
 
-    static async deserialize(data: any) {
-        if (data.version !== crypto_session.version) {
-            throw new Error("Incompatible crypto_session version");
-        }
-        let other_key_buffer = Uint8Array.from(atob(data.other_key), c => c.charCodeAt(0));
-        let other_key = await window.crypto.subtle.importKey("spki", other_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
-        let self_public_key_buffer = Uint8Array.from(atob(data.self_keys.publicKey), c => c.charCodeAt(0));
-        let self_private_key_buffer = Uint8Array.from(atob(data.self_keys.privateKey), c => c.charCodeAt(0));
-        let self_public_key = await window.crypto.subtle.importKey("spki", self_public_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
-        let self_private_key = await window.crypto.subtle.importKey("pkcs8", self_private_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["decrypt"]);
-        let self_keys = { publicKey: self_public_key, privateKey: self_private_key };
-        return new crypto_session(data.id, other_key, self_keys);
+    // --- deserialize saved session ---
+    static deserialize(data: any): crypto_session {
+        if (data.version !== crypto_session.version) throw new Error("Incompatible session version");
+
+        const otherPublicKey = util.decodeBase64(data.otherPublicKey);
+        const selfKeyPair = {
+            publicKey: util.decodeBase64(data.selfKeyPair.publicKey),
+            secretKey: util.decodeBase64(data.selfKeyPair.secretKey)
+        };
+        return new crypto_session(data.id, otherPublicKey, selfKeyPair);
     }
 }
 
 async function makeKeys() {
-    const keyPair = await window.crypto.subtle.generateKey(
-        {
-            name: "RSA-OAEP",
-            modulusLength: 2048,
-            publicExponent: new Uint8Array([1, 0, 1]),
-            hash: "SHA-256",
-        },
-        true,
-        ["encrypt", "decrypt"]
-    );
-    const publicKey = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
-    const privateKey = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
-    console.log("Public Key:", btoa(String.fromCharCode(...new Uint8Array(publicKey))));
-    console.log("Private Key:", btoa(String.fromCharCode(...new Uint8Array(privateKey))));
-    return { publicKey, privateKey, keyPair };
+    const keyPair = nacl.box.keyPair()
+    return { publicKey: keyPair.publicKey, privateKey:keyPair.secretKey, keyPair };
 }
 
 class crypto_manager {
     static version = 1;
-    self_keys: CryptoKeyPair;
+    selfKeys: nacl.BoxKeyPair;
     sessions: { [key: string]: crypto_session } = {};
 
-    constructor(self_keys: CryptoKeyPair) {
-        this.self_keys = self_keys;
+    constructor(selfKeys: nacl.BoxKeyPair) {
+        this.selfKeys = selfKeys;
     }
 
-    static async init() {
-        const { keyPair } = await makeKeys();
+    // --- initialize a new manager with fresh keys ---
+    static init(): crypto_manager {
+        const keyPair = nacl.box.keyPair();
         return new crypto_manager(keyPair);
     }
 
-    get_session(id: string): crypto_session {
-        if (id in this.sessions) {
-            return this.sessions[id];
-        }
-        return null;
+    // --- get an existing session by id ---
+    getSession(id: string): crypto_session | null {
+        return this.sessions[id] || null;
     }
 
-    add_session(id: string, other_key: string) {
-        if (id in this.sessions) {
-            return this.sessions[id];
-        }
-        let other_key_buffer = Uint8Array.from(atob(other_key), c => c.charCodeAt(0));
-        return window.crypto.subtle.importKey("spki", other_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]).then((imported_key) => {
-            let new_session = new crypto_session(id, imported_key, this.self_keys);
-            this.sessions[id] = new_session;
-            return new_session;
-        });
+    // --- add a session (peer public key in base64) ---
+    addSession(id: string, otherKeyBase64: string): crypto_session {
+        if (id in this.sessions) return this.sessions[id];
+
+        const otherKey = util.decodeBase64(otherKeyBase64);
+        const newSession = new crypto_session(id, otherKey, this.selfKeys);
+        this.sessions[id] = newSession;
+        return newSession;
     }
 
-    async decrypt(ciphertext: ArrayBuffer): Promise<string> { //only here because can decrypt sessionless, encryption requires session
-        const decrypted = await window.crypto.subtle.decrypt({ name: "RSA-OAEP" }, this.self_keys.privateKey, ciphertext);
-        return new TextDecoder().decode(decrypted);
+    // --- decrypt "sessionless" message (if needed) ---
+    decrypt(ciphertext: Uint8Array, senderPublicKey: Uint8Array): string {
+        // just a helper if you have a raw message and sender key
+        const tempSession = new crypto_session("temp", senderPublicKey, this.selfKeys);
+        return tempSession.decrypt(ciphertext);
     }
 
+    // --- serialize manager for storage ---
     async serialize() {
-        let sessions_serialized: { [key: string]: any } = {};
-        for (let [id, session] of Object.entries(this.sessions)) {
-            sessions_serialized[id] = session.serialize();
+        const sessionsSerialized: { [key: string]: any } = {};
+        for (const [id, session] of Object.entries(this.sessions)) {
+            sessionsSerialized[id] = session.serialize();
         }
+
         return {
             version: crypto_manager.version,
-            self_keys: {
-                publicKey: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("spki", this.self_keys.publicKey)))),
-                privateKey: btoa(String.fromCharCode(...new Uint8Array(await window.crypto.subtle.exportKey("pkcs8", this.self_keys.privateKey))))
+            selfKeys: {
+                publicKey: util.encodeBase64(this.selfKeys.publicKey),
+                secretKey: util.encodeBase64(this.selfKeys.secretKey)
             },
-            sessions: sessions_serialized
+            sessions: sessionsSerialized
         };
     }
 
-    static async deserialize(data: any) {
-        if (data.version !== crypto_manager.version) {
-            throw new Error("Incompatible crypto_manager version");
+    // --- deserialize manager ---
+    static deserialize(data: any): crypto_manager {
+        if (data.version !== crypto_manager.version) throw new Error("Incompatible manager version");
+
+        const selfKeys: nacl.BoxKeyPair = {
+            publicKey: util.decodeBase64(data.selfKeys.publicKey),
+            secretKey: util.decodeBase64(data.selfKeys.secretKey)
+        };
+
+        const manager = new crypto_manager(selfKeys);
+
+        for (const [id, sessionData] of Object.entries(data.sessions)) {
+            manager.sessions[id] = crypto_session.deserialize(sessionData);
         }
-        let self_public_key_buffer = Uint8Array.from(atob(data.self_keys.publicKey), c => c.charCodeAt(0));
-        let self_private_key_buffer = Uint8Array.from(atob(data.self_keys.privateKey), c => c.charCodeAt(0));
-        let self_public_key = await window.crypto.subtle.importKey("spki", self_public_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
-        let self_private_key = await window.crypto.subtle.importKey("pkcs8", self_private_key_buffer.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["decrypt"]);
-        let self_keys = { publicKey: self_public_key, privateKey: self_private_key };
-        let manager = new crypto_manager(self_keys);
-        for (let [id, session_data] of Object.entries(data.sessions)) {
-            manager.sessions[id] = await crypto_session.deserialize(session_data);
-        }
+
         return manager;
     }
 }

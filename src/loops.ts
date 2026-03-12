@@ -1,13 +1,13 @@
-import { senders, formatDate } from './helpers'
+import { senders, formatDate, load_db_key } from './helpers'
 import { online_bar, div, msg_container, servers_div, chat_div } from './elements'
-import { zapGlobals, Server } from './main.d'
+import { zapGlobals, Server, Message, Account } from './main.d'
 import { change_room_binder, save } from './helpers'
 
 const default_pfp = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAMAAABF0y+mAAAAY1BMVEUVFBoAAAAAAAsAAAXGxsfc3Nxramzi4uOEhIUJBxA2NTn////l5eWxsLKbm5yXl5ljY2U8PD/Q0NFbWl3y8vK4uLkaGR9GRUihoaIAAAhxcXO+vr99fX8nJyv7+/uQkJHW1td4h7FUAAAAsElEQVR4Ac3RBQKDMBAEQBZNurg7/P+VzdV7LwDiE4933Q8AJPcBBNrCKIzgLE7CyPyrvTGNCOnEjDn+EAXzJ5IlNUasEod+ybrR6LGFIDKaUiEMuye27GONNWNBOzCBRpAQxMhR4zQzfGLKSiMWroHgxha+xp2TJ3gw0+g3PCGIk42vEBmPJ3KHp7HlZgVjLhrd4VJXQ8qF86RwWqNDcKnDE65v8/dkE/D73BZiV/zuQNAJugNKvQoAAAAASUVORK5CYII=";
 let scroll_listener: null|(()=>void) = null;
 
 let last_msg_author: string = null;
-function renderMessage(global: zapGlobals, message: any, side: "top" | "bottom" = "bottom") {
+async function renderMessage(global: zapGlobals, message: Message, side: "top" | "bottom" = "bottom") {
     try {
         let msg_div;
         let neighbor: HTMLElement | null;
@@ -18,27 +18,29 @@ function renderMessage(global: zapGlobals, message: any, side: "top" | "bottom" 
             neighbor = msg_container.firstElementChild as HTMLElement;
         }
 
-        const br = document.createElement("br");
+        let account:Account = await load_db_key(global.db, "accounts", message.account, { id: message.account, name: "Unknown", pfp: default_pfp });
+
+        //const br = document.createElement("br");
 
         last_msg_author = neighbor
             ? neighbor.getAttribute("data-author")
             : null;
-        if (last_msg_author === message.account.id) {
+        if (last_msg_author === account.id) {
             if (side === "bottom") {
                 msg_div = msg_container.lastChild as HTMLElement;
-                msg_div.appendChild(br);
+                //msg_div.appendChild(br);
             } else {
                 msg_div = msg_container.firstChild as HTMLElement;
-                msg_div.insertBefore(br, msg_div.children[4]);
+                //msg_div.insertBefore(br, msg_div.children[4]);
             }
         } else {
             msg_div = document.createElement("div");
-            msg_div.classList.add("msg", "author_" + message.account.id);
+            msg_div.classList.add("msg", "author_" + account.id);
             msg_div.id = "msg_" + message.id;
-            msg_div.setAttribute("data-author", message.account.id);
+            msg_div.setAttribute("data-author", account.id);
             msg_div.innerHTML = `
-<img src="${message.account.pfp || default_pfp}" alt="pfp" style="width:30px;height:30px;border-radius:50%;margin-right:10px;" data-account="${message.account.id}">
-<strong>${message.account.name}</strong> 
+<img src="${account.pfp || default_pfp}" alt="pfp" style="width:30px;height:30px;border-radius:50%;margin-right:10px;" data-account="${account.id}">
+<strong>${account.name}</strong> 
 <span class="timestamp">${formatDate(new Date(message.timestamp))}</span>
 <br>`;
         }

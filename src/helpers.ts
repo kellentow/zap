@@ -66,14 +66,13 @@ async function canvas_to_b64(canvas: OffscreenCanvas): Promise<string> {
     FAVICON_UNREAD = await canvas_to_b64(canvas)
 })();
 
-let encryption_enabled = false; // config
+let encryption_enabled = true; // config
 let encryption_ready = false;
 let session_crypto: crypto_manager = null
 if (encryption_enabled) {
-    crypto_manager.init().then((manager) => {
-        session_crypto = manager
-        encryption_ready = true;
-    });
+    let manager = crypto_manager.init()
+    session_crypto = manager
+    encryption_ready = true;
 } else {
     if (document.visibilityState == "visible") {
         if (!confirm(
@@ -140,19 +139,34 @@ function change_room_binder(global: zapGlobals, room: string, element: HTMLEleme
         if (element) {
             element.classList.add("selected");
         }
-        load_db(global.db, "messages").then((messages) => {
-            //messages.forEach((element: Message) => {
-            //    console.debug(element.id, element.id.startsWith(global.room + "--"));
-            //});
-            let room_messages: Message[] = (messages.filter((a: Message) => { return a.id && a.id.startsWith(global.room + "--") }) as Message[])
-            global.messages[global.room] = [...room_messages];
-            global.messages[global.room].sort((a, b) => { return a.timestamp - b.timestamp })
-            global.lastRenderedIndex = 0;
-            global.reTick = true;
-            global.firstRenderedIndex = 0;
-            global.lastRenderedIndex = 0; // Reset last rendered index when changing room
-            initialRender(global);
-        })
+        load_db_keys(global.db, "messages").then(async (keys) => {
+            console.debug("Loaded message keys from DB:", keys);
+            let recent: Message[] = [];
+            keys.forEach(async (key) => {
+                if (key.startsWith(global.room + "--")) {
+                    let msg = await load_db_key(global.db, "messages", key, null);
+                    if (msg) {
+                        recent.push(msg);
+                    }
+                    recent.sort((a, b) => { return a.timestamp - b.timestamp })
+                    for (let i = 50; i < recent.length; i++) {
+                        recent[i] = {
+                            id: recent[i].id,
+                            timestamp: recent[i].timestamp,
+                            content: "",
+                            loaded: false,
+                            account: recent[i].account
+                        }
+                    }
+                    global.messages[global.room] = recent;
+                    global.lastRenderedIndex = 0;
+                    global.reTick = true;
+                    global.firstRenderedIndex = 0;
+                    global.lastRenderedIndex = 0; // Reset last rendered index when changing room
+                    initialRender(global);
+                }
+            });
+        });
         global.reTick = true;
         let send_join = function () {
             if (!encryption_ready) {
@@ -174,28 +188,16 @@ function lbsend(a: any, b: any, c: any, d: any, encrypt: boolean = undefined, en
         let messages: any[][] = []
 
         let allPromises = encryption_sessions.map((session) => {
-            let enc_a = session.encrypt(JSON.stringify(a)).catch(err => {
-                console.error("enc_a failed", err, JSON.stringify(a), a);
-                throw err;
-            });;
-            let enc_b = session.encrypt(JSON.stringify(b)).catch(err => {
-                console.error("enc_b failed", err, JSON.stringify(b), b);
-                throw err;
-            });;
-            let enc_c = session.encrypt(JSON.stringify(c)).catch(err => {
-                console.error("enc_c failed", err, JSON.stringify(c), c);
-                throw err;
-            });;
-            let enc_d = session.encrypt(JSON.stringify(d)).catch(err => {
-                console.error("enc_d failed", err, JSON.stringify(d), d);
-                throw err;
-            });;
+            let enc_a = session.encrypt(JSON.stringify(a))
+            let enc_b = session.encrypt(JSON.stringify(b))
+            let enc_c = session.encrypt(JSON.stringify(c))
+            let enc_d = session.encrypt(JSON.stringify(d))
             return Promise.all([enc_a, enc_b, enc_c, enc_d])
                 .then(([a, b, c, d]) => {
-                    let str_a = arrayBufferToBase64(a)
-                    let str_b = arrayBufferToBase64(b)
-                    let str_c = arrayBufferToBase64(c)
-                    let str_d = arrayBufferToBase64(d)
+                    let str_a = arrayBufferToBase64(a.buffer as ArrayBuffer)
+                    let str_b = arrayBufferToBase64(b.buffer as ArrayBuffer)
+                    let str_c = arrayBufferToBase64(c.buffer as ArrayBuffer)
+                    let str_d = arrayBufferToBase64(d.buffer as ArrayBuffer)
                     messages.push([str_a, str_b, str_c, str_d, session.id])
                 });
         });
@@ -254,6 +256,20 @@ function load_db_key<T>(db: IDBDatabase, table: string, key: string, Default: T)
     });
 }
 
+function load_db_keys<T>(db: IDBDatabase, table: string): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error("Database not initialized"));
+            return;
+        }
+        const tx = db.transaction(table, "readonly");
+        const store = tx.objectStore(table);
+        const request = store.getAllKeys();
+        request.onsuccess = () => resolve(request.result as string[]);
+        request.onerror = () => reject(request.error);
+    });
+}
+
 function load_db<T>(db: IDBDatabase, table: string): Promise<T[]> {
     return new Promise((resolve, reject) => {
         const tx = db.transaction(table, "readonly");
@@ -283,7 +299,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
     return btoa(binary);
 }
 
-async function urlToHtmlElement(url:string, mime?:string ): Promise<HTMLElement> {
+async function urlToHtmlElement(url: string, mime?: string): Promise<HTMLElement> {
     let response = await fetch(url);
     let element = document.createElement('div');
     element.classList.add('attachment');
@@ -352,7 +368,7 @@ let senders: {
     request_history: Function, send_history: Function,
     base: Function, bind: Function
 } = {
-    message: async function (global: zapGlobals, text: string, attachments?: any[], recipients?: string[]) { // Send a message
+    message: async function (global: zapGlobals, text: string, attachments?: Blob[], recipients?: string[]) { // Send a message
         if (typeof text !== "string") {
             text = JSON.stringify(text);
         }
@@ -363,23 +379,18 @@ let senders: {
         let b64_attachments: string[] = []
         if (attachments && attachments.length > 0) {
             for (let i = 0; i < attachments.length; i++) {
-                let att = attachments[i];
-                b64_attachments.push(await new Promise((resolve) => {
-                    let reader = new FileReader();
-                    reader.onloadend = () => {
-                        resolve((reader.result as string));
-                    };
-                    reader.readAsDataURL(att);
-                }));
+                let att: Blob = attachments[i];
+                let b64 = arrayBufferToBase64(await att.arrayBuffer())
+                b64_attachments.push(`data:${att.type};base64,${b64}`);
             }
         }
         let time = Date.now();
         let message_id = `${global.room}--${crypto.randomUUID()}-${crypto.randomUUID()}`
-        let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
+        let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.getSession(r)).filter(s => s) : []
         lbsend(0, JSON.stringify(global.account), [time, text, message_id, b64_attachments], global.room, encryption_enabled, recipients_sessions);
     },
     ping: function (global: zapGlobals, status: string, recipients?: string[]) { // Send a ping
-        let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
+        let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.getSession(r)).filter(s => s) : []
         lbsend(1, JSON.stringify(global.account), { now: Date.now(), status: status }, global.room, encryption_enabled, recipients_sessions);
     },
     join: function (global: zapGlobals) { // Send a join notif
@@ -398,22 +409,21 @@ let senders: {
     },
     crypto_response: function (global: zapGlobals) { // Send your public key
         if (encryption_ready && typeof global.account != "undefined") {
-            window.crypto.subtle.exportKey("spki", session_crypto.self_keys.publicKey).then((exported) => {
-                senders.crypto(global, { type: "KEYresponse", id: global.account.id, public: arrayBufferToBase64(exported) });
-            });
+            let pub_key = session_crypto.selfKeys.publicKey.buffer as ArrayBuffer
+            senders.crypto(global, { type: "KEYresponse", id: global.account.id, public: arrayBufferToBase64(pub_key) });
         } else {
             setTimeout(senders.crypto_response, 100, [global])
         }
     },
     request_history: function (global: zapGlobals, recipients?: string[]) {
         let ids = global.messages[global.room].map(((v, i, a) => { return v.id }))
-        let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
+        let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.getSession(r)).filter(s => s) : []
         lbsend(3, global.account, ids, global.room, encryption_enabled, recipients_sessions)
     },
     send_history: function (global: zapGlobals, ids: string[], recipients?: string[]) {
 
         let msgs = global.messages[global.room].map(((v, i, a) => { return ids.indexOf(v.id) != -1 ? v : null }))
-        let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.get_session(r)).filter(s => s) : []
+        let recipients_sessions: crypto_session[] = (encryption_enabled && recipients) ? recipients.map(r => session_crypto.getSession(r)).filter(s => s) : []
         lbsend(4, global.account, msgs, global.room, encryption_enabled, recipients_sessions)
     },
     base: function (global: zapGlobals, a: any, b: any, c: any, d: any) { window.send(a, b, c, d) },
@@ -430,6 +440,23 @@ let senders: {
 
 let formatter = new Showdown.Converter();
 
+
+let emotes: { [key: string]: { src: string, width: number, height: number } } = {};
+fetch("asset://emotes.json").then((txt) => { return txt.json() }).then((json) => {
+    Object.keys(json).forEach((key) => {
+        let emote_meta: { src: string, width: number, height: number } = json[key];
+        fetch(emote_meta.src).then(async (resp) => {
+            let AB = await resp.arrayBuffer()
+            let b64 = arrayBufferToBase64(AB)
+            emotes[key] = {
+                src: "data:" + resp.type + ";base64," + b64,
+                width: emote_meta.width,
+                height: emote_meta.height
+            }
+        })
+    });
+})
+
 let recievers: {
     message: Function, ping: Function,
     crypto: Function, join: Function,
@@ -445,22 +472,30 @@ let recievers: {
                 sendNotification("Zap Messenger:  " + account.name + " sent you a message!", message);
             }
         }
+        message = message.replaceAll("<", "&lt;")
+        message = message.replaceAll(">", "&rt;")
+        let words = message.split(" ")
+        words.forEach((word, i) => {
+            if (emotes[word]) {
+                let emote = emotes[word];
+                words[i] = `<img src="${emote.src}" style="width:${emote.width}em;height:${emote.height}em;">`
+            }
+        });
+        message = words.join(" ")
         let msg_content = formatter.makeHtml(message);
         if (attachments && attachments.length > 0) {
             for (let i = 0; i < attachments.length; i++) {
                 let att = attachments[i];
-                let blob = new Blob([base64ToArrayBuffer(att.split(",")[1])]);
-                let mime = att.split(",")[0].split(":")[1].split(";")[0];
-                let url = URL.createObjectURL(blob);
-                let element = await urlToHtmlElement(url, mime);
-                URL.revokeObjectURL(url);
+                let element = await urlToHtmlElement(att);
+                //URL.revokeObjectURL(url);
                 msg_content += `<br/>`;
                 msg_content += element.outerHTML;
             }
         }
+        save_db_key(global.db, "accounts", account)
         let new_message: Message = {
             timestamp: timestamp,
-            account,
+            account: account.id,
             content: msg_content,
             id
         }
@@ -504,7 +539,7 @@ let recievers: {
             senders.crypto_response(global, account);
         } else if (content.type == "KEYresponse") {
             if (content.public && content.public != "E2EE DENIED") {
-                let session = session_crypto.add_session(account.id, content.public);
+                let session = session_crypto.addSession(account.id, content.public);
             } else {
                 console.warn("User ".concat(account.id, " denied sending their public key."));
             }
@@ -532,12 +567,16 @@ let recievers: {
             for (let i = 0; i < (enc_msg.length); i++) {
                 let message = enc_msg[i]
                 if (message[4] == global.account.id) {
-                    type = JSON.parse(await (session_crypto.decrypt(base64ToArrayBuffer(message[0]))))
-                    stringed_account = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[1])))
-                    content = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[2])))
-                    room = JSON.parse(await session_crypto.decrypt(base64ToArrayBuffer(message[3])))
+                    let sessions = Object.values(session_crypto.sessions)
+                    for (let i=0;i<sessions.length;i++) {
+                        let session = sessions[i]
+                        type =              JSON.parse(await session.decrypt(new Uint8Array(base64ToArrayBuffer(message[0]))))
+                        stringed_account =  JSON.parse(await session.decrypt(new Uint8Array(base64ToArrayBuffer(message[1]))))
+                        content =           JSON.parse(await session.decrypt(new Uint8Array(base64ToArrayBuffer(message[2]))))
+                        room =              JSON.parse(await session.decrypt(new Uint8Array(base64ToArrayBuffer(message[3]))))
 
-                    return await recievers.all(global, type, stringed_account, content, room);
+                        return await recievers.all(global, type, stringed_account, content, room);
+                    }
                 }
             };
             console.debug("No block for us in encrypted message, ignoring.");
@@ -576,4 +615,4 @@ let recievers: {
     }
 }
 
-export { save, load, save_db_key, load_db, load_db_key, senders, recievers, sendNotification, change_room_binder, formatDate, set_favicon, FAVICON_READ, FAVICON_UNREAD, canvas_to_b64 }
+export { save, load, save_db_key, load_db, load_db_key, senders, recievers, sendNotification, change_room_binder, formatDate, set_favicon, FAVICON_READ, FAVICON_UNREAD, canvas_to_b64, arrayBufferToBase64, base64ToArrayBuffer }

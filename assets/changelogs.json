@@ -38,5 +38,8 @@
         "text": "- Changed how assets are loaded \n- added theme matching buttons\n- fixed minor bugs",
         "date": "2026-02-04",
         "version_str": "1.1.0.a"
+    },
+    {
+        "text": "- Added MD messages\n- Refactored message systems\n- Added BTTV like emotes"
     }
 ]

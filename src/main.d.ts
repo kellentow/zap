@@ -14,7 +14,8 @@ interface Message {
     id:string,
     timestamp:number,
     content:string,   
-    account:Account
+    account:string,
+    loaded?: boolean;
 }
 
 interface zapGlobals {

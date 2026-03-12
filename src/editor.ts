@@ -100,7 +100,8 @@ class Editor {
     }
 
     getMD () {
-        return this.text
+        let txt = this.text;
+        return txt
     }
 
     setMD (md:string) {

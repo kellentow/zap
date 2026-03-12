@@ -1,0 +1,82 @@
+{
+    "plinK": {
+        "src":"asset://emotes/plinK.webp",
+        "width":2.85,
+        "height":1
+    },
+    "plinksplosion": {
+        "src":"asset://emotes/plinksplosion.webp",
+        "width":3,
+        "height":1
+    },
+    "plinktosis": {
+        "src":"asset://emotes/plinktosis.webp",
+        "width":1.892,
+        "height":1
+    },
+    "planK": {
+        "src":"asset://emotes/planK.webp",
+        "width":3,
+        "height":1
+    },
+    "CatJam": {
+        "src":"asset://emotes/CatJam.webp",
+        "width":1,
+        "height":1
+    },
+    "sadge": {
+        "src":"asset://emotes/sadge.webp",
+        "width":1,
+        "height":1
+    },
+    "5head": {
+        "src":"asset://emotes/5head.webp",
+        "width":1,
+        "height":1
+    },
+    "transplinK": {
+        "src":"asset://emotes/transplinK.webp",
+        "width":3,
+        "height":1
+    },
+    "copium": {
+        "src":"asset://emotes/copium.webp",
+        "width":1,
+        "height":1
+    },
+    "OMEGALUL": {
+        "src":"asset://emotes/omegalul.webp",
+        "width":1,
+        "height":1
+    },
+    "HUH": {
+        "src":"asset://emotes/HUH.webp",
+        "width":1,
+        "height":1
+    },
+    "HUHH": {
+        "src":"asset://emotes/HUHH.webp",
+        "width":1,
+        "height":1
+    },
+    "sadCat": {
+        "src":"asset://emotes/sadCat.webp",
+        "width":1,
+        "height":1
+    },
+    "AAAA": {
+        "src":"asset://emotes/AAAA.webp",
+        "width":1,
+        "height":1
+    },
+    "SNIFFA": {
+        "src":"asset://emotes/SNIFFA.webp",
+        "width":1,
+        "height":1
+    },
+    "NOOO": {
+        "src":"asset://emotes/NOOO.webp",
+        "width":1,
+        "height":1
+    }
+}

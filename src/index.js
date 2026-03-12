@@ -2,7 +2,7 @@ import htmlContent from './body.html';
 import cssContent from './body.css';
 import manifestData from './manifest.json'
 import workerString from './main_worker.str.js'
-import mainString from '../dist/ts/str.main.js'
+import mainString from '../dist/ts/str.main.big.js'
 
 function create_script(src) {
   const script = document.createElement("script");
